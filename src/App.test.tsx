@@ -271,7 +271,7 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.queryByRole("button", { name: "Clear filter" })).toBeNull();
   });
 
-  it("records an expense paid by several people", async () => {
+  it("splits a multi-payer expense equally as payers are added", async () => {
     render(<App />);
     createSoloGroup("Trip", "Alex\nSam");
 
@@ -279,17 +279,76 @@ describe("App — offline mode (no Firebase)", () => {
     fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("button", { name: "Several people paid" }));
 
-    // Two contribution inputs appear, one per member.
-    const boxes = [...document.querySelectorAll<HTMLInputElement>(".split-row input[type=number]")];
-    fireEvent.change(boxes[0]!, { target: { value: "70" } });
-    fireEvent.change(boxes[1]!, { target: { value: "30" } });
+    const boxes = () => [
+      ...document.querySelectorAll<HTMLInputElement>(".payer-list input[type=number]"),
+    ];
+    // Starts with just the person already selected, holding the whole amount.
+    expect(boxes().length).toBe(1);
+    expect(boxes()[0]!.value).toBe("100.00");
+
+    // Adding a second payer re-divides equally rather than asking for arithmetic.
+    const add = screen.getByLabelText("Add a payer") as HTMLSelectElement;
+    const samId = [...add.options].find((o) => o.text === "Sam")!.value;
+    fireEvent.change(add, { target: { value: samId } });
+    expect(boxes().length).toBe(2);
+    expect(boxes().map((b) => b.value)).toEqual(["50.00", "50.00"]);
+    expect(screen.getByText(/split equally/)).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(screen.queryByText("Add transaction")).toBeNull());
 
-    // 100 split two ways with 70/30 contributions leaves Alex owed 20.
+    // 50/50 contributions on a 50/50 split leaves everyone square.
     fireEvent.click(screen.getByRole("tab", { name: "Balances" }));
-    const alexCard = screen.getByText("Alex").closest(".balance-card") as HTMLElement;
-    expect(within(alexCard).getByText("₹20.00")).toBeTruthy();
+    const cards = [...document.querySelectorAll<HTMLElement>(".balance-card")];
+    expect(cards.length).toBe(2);
+    for (const c of cards) expect(within(c).getByText("settled up")).toBeTruthy();
+  });
+
+  it("keeps a typed contribution and auto-splits only the rest", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam\nJordan");
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ Add" }));
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Several people paid" }));
+
+    const boxes = () => [
+      ...document.querySelectorAll<HTMLInputElement>(".payer-list input[type=number]"),
+    ];
+    const add = () => screen.getByLabelText("Add a payer") as HTMLSelectElement;
+    const idFor = (name: string) =>
+      [...add().options].find((o) => o.text === name)!.value;
+
+    // Pin Alex at 60, then add two more: the remaining 40 splits 20/20.
+    fireEvent.change(boxes()[0]!, { target: { value: "60" } });
+    fireEvent.change(add(), { target: { value: idFor("Sam") } });
+    fireEvent.change(add(), { target: { value: idFor("Jordan") } });
+
+    expect(boxes().map((b) => b.value)).toEqual(["60", "20.00", "20.00"]);
+    // A manual entry is present, so it no longer claims to be an equal split.
+    expect(screen.queryByText(/split equally/)).toBeNull();
+    expect(screen.getByText(/₹100.00 of ₹100.00 accounted for/)).toBeTruthy();
+  });
+
+  it("removing a payer re-divides the amount", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ Add" }));
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "90" } });
+    fireEvent.click(screen.getByRole("button", { name: "Several people paid" }));
+
+    const add = screen.getByLabelText("Add a payer") as HTMLSelectElement;
+    fireEvent.change(add, {
+      target: { value: [...add.options].find((o) => o.text === "Sam")!.value },
+    });
+    const boxes = () => [
+      ...document.querySelectorAll<HTMLInputElement>(".payer-list input[type=number]"),
+    ];
+    expect(boxes().map((b) => b.value)).toEqual(["45.00", "45.00"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Remove Sam as a payer/ }));
+    expect(boxes().map((b) => b.value)).toEqual(["90.00"]);
   });
 
   it("converts an expense paid in another currency", async () => {

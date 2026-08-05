@@ -31,15 +31,18 @@
    zoom reads as the screen jumping. 16px is the floor for every control. */
 input, select, textarea { font-size: 16px; }
 html, body { margin: 0; height: 100%; }
-/* Nothing should ever scroll the page sideways. */
-html, body { overflow-x: hidden; }
+/* No overflow-x here on purpose. Setting it on <body> promotes body to the
+   scroll container, and Chrome ties pull-to-refresh to the ROOT scroller — so
+   it silently dies on any tab tall enough to scroll. The horizontal overflow
+   this used to guard against came from a since-removed sticky header. */
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
   line-height: 1.4;
-  overscroll-behavior-y: none;
+  /* Deliberately NOT overscroll-behavior-y: none — that is what disables
+     pull-to-refresh. Overlays contain their own scroll via .modal instead. */
 }
 .hidden { display: none !important; }
 
@@ -615,3 +618,13 @@ body {
 .tx-amt small {
   display: block; color: var(--text-faint); font-size: 11px; font-weight: 600;
 }
+
+/* Multi-payer list: only the chosen payers, plus an add control */
+.payer-list { display: flex; flex-direction: column; gap: 6px; }
+.payer-list .split-row label { flex: 1; }
+.payer-list .split-row input[type=number] { width: 104px; }
+.payer-list .chip-cancel {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--text-faint); display: inline-flex; flex: none;
+}
+.payer-list .chip-cancel:hover { color: var(--text); }

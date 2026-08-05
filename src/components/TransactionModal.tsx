@@ -1,10 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "./Modal";
 import type { AuthUser, Group, Recurrence, SplitType, Transaction, TxDraft } from "../types";
-import { nameForUid, round2, txShares, txTotalInGroup } from "../lib/finance";
+import {
+  fromCents,
+  nameForUid,
+  round2,
+  toCents,
+  txShares,
+  txTotalInGroup,
+} from "../lib/finance";
 import { addTransaction, deleteTransaction, updateTransaction } from "../lib/repo";
 import { CATEGORIES, money, todayStr } from "../lib/format";
 import { toast } from "../lib/toast";
+import { Icon } from "./Icon";
 
 interface Props {
   group: Group;
@@ -43,11 +51,23 @@ export function TransactionModal({ group, existing, user, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   /** Several people chipped in. Opt-in so the single-payer case stays one tap. */
   const [multiPay, setMultiPay] = useState(!!existing?.payers);
-  const [payers, setPayers] = useState<Record<string, string>>(() => {
+  /** Only the people actually paying, in the order they were added. */
+  const [payerIds, setPayerIds] = useState<string[]>(() =>
+    existing?.payers ? Object.keys(existing.payers) : [],
+  );
+  const [payerAmt, setPayerAmt] = useState<Record<string, string>>(() => {
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(existing?.payers ?? {})) out[k] = String(v);
     return out;
   });
+  /**
+   * Amounts the user typed. Everything else is auto-split, so adding or removing
+   * a payer re-divides only the untouched shares and never overwrites a
+   * deliberate figure.
+   */
+  const [manualPayers, setManualPayers] = useState<Set<string>>(
+    () => new Set(existing?.payers ? Object.keys(existing.payers) : []),
+  );
   const [recurrence, setRecurrence] = useState<Recurrence | null>(existing?.recurrence ?? null);
   const [foreign, setForeign] = useState(!!existing?.currency);
   const [txCur, setTxCur] = useState(existing?.currency ?? "");
@@ -58,14 +78,14 @@ export function TransactionModal({ group, existing, user, onClose }: Props) {
     return s;
   });
 
+  const memberNameOf = (id: string) => group.members.find((m) => m.id === id)?.name ?? "—";
   const amountNum = Number(amount) || 0;
   const amongIds = group.members.filter((m) => among.has(m.id)).map((m) => m.id);
   /** The currency the amount is typed in — the group's unless overridden. */
   const inputCur = foreign && txCur.trim() ? txCur.trim() : cur;
   const rateNum = Number(rate) || 0;
-  const payerSum = round2(
-    Object.entries(payers).reduce((sum, [, v]) => sum + (Number(v) || 0), 0),
-  );
+  const payerSum = round2(payerIds.reduce((sum, id) => sum + (Number(payerAmt[id]) || 0), 0));
+  const unpaid = group.members.filter((m) => !payerIds.includes(m.id));
   const converted = foreign && rateNum > 0 ? txTotalInGroup({ amount: amountNum, rate: rateNum }) : null;
 
   // Live per-person preview (in cents), recomputed as inputs change.
@@ -101,6 +121,78 @@ export function TransactionModal({ group, existing, user, onClose }: Props) {
     return "";
   }, [amongIds, splitType, shares, amountNum, cur, foreign, txCur, rateNum, inputCur, multiPay, payerSum]);
 
+  /**
+   * Divide what is not manually set equally across the remaining payers. Cents
+   * left over go to the earliest auto rows so the parts always sum to the total.
+   */
+  const splitEqually = (
+    ids: string[],
+    amounts: Record<string, string>,
+    manual: Set<string>,
+    total: number,
+  ): Record<string, string> => {
+    const auto = ids.filter((id) => !manual.has(id));
+    if (!auto.length) return amounts;
+    const fixed = ids
+      .filter((id) => manual.has(id))
+      .reduce((sum, id) => sum + toCents(Number(amounts[id]) || 0), 0);
+    const left = Math.max(0, toCents(total) - fixed);
+    const base = Math.floor(left / auto.length);
+    const rem = left - base * auto.length;
+    const next = { ...amounts };
+    auto.forEach((id, i) => {
+      next[id] = fromCents(base + (i < rem ? 1 : 0)).toFixed(2);
+    });
+    return next;
+  };
+
+  // Re-divide whenever the payer set or the total changes.
+  useEffect(() => {
+    if (!multiPay || !payerIds.length) return;
+    setPayerAmt((prev) => {
+      const next = splitEqually(payerIds, prev, manualPayers, amountNum);
+      const changed = payerIds.some((id) => next[id] !== prev[id]);
+      return changed ? next : prev;
+    });
+    // splitEqually is pure over its arguments; manualPayers is read inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [multiPay, payerIds.join(","), amountNum]);
+
+  const addPayer = (id: string) => {
+    if (!id || payerIds.includes(id)) return;
+    setPayerIds((ids) => [...ids, id]);
+  };
+
+  const removePayer = (id: string) => {
+    setPayerIds((ids) => ids.filter((x) => x !== id));
+    setManualPayers((m) => {
+      const next = new Set(m);
+      next.delete(id);
+      return next;
+    });
+    setPayerAmt((a) => {
+      const next = { ...a };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const editPayer = (id: string, value: string) => {
+    setManualPayers((m) => new Set(m).add(id));
+    setPayerAmt((a) => ({ ...a, [id]: value }));
+  };
+
+  /** Turning multi-pay on starts from whoever was already selected. */
+  const toggleMultiPay = () => {
+    setMultiPay((on) => {
+      if (!on && payerIds.length === 0 && paidBy) {
+        setPayerIds([paidBy]);
+        setManualPayers(new Set());
+      }
+      return !on;
+    });
+  };
+
   const toggleAmong = (id: string) => {
     setAmong((prev) => {
       const next = new Set(prev);
@@ -128,8 +220,8 @@ export function TransactionModal({ group, existing, user, onClose }: Props) {
     let contributors: Record<string, number> | undefined;
     let payer = paidBy;
     if (multiPay) {
-      const entries = Object.entries(payers)
-        .map(([k, v]) => [k, round2(Number(v) || 0)] as const)
+      const entries = payerIds
+        .map((id) => [id, round2(Number(payerAmt[id]) || 0)] as const)
         .filter(([, v]) => v > 0);
       if (entries.length === 0) return toast("Enter what each person paid.");
       if (Math.abs(round2(amountNum - entries.reduce((s2, [, v]) => s2 + v, 0))) >= 0.01) {
@@ -241,33 +333,64 @@ export function TransactionModal({ group, existing, user, onClose }: Props) {
       <div className="field">
         <div className="label-row">
           <label>Paid by</label>
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => setMultiPay((v) => !v)}
-          >
+          <button type="button" className="link-btn" onClick={toggleMultiPay}>
             {multiPay ? "One person paid" : "Several people paid"}
           </button>
         </div>
         {multiPay ? (
-          <div className="split-list">
-            {group.members.map((m) => (
-              <div className="split-row" key={m.id}>
-                <label>{m.name}</label>
+          <div className="payer-list">
+            {payerIds.map((id) => (
+              <div className="split-row" key={id}>
+                <label>{memberNameOf(id)}</label>
                 <input
                   type="number"
                   inputMode="decimal"
                   min="0"
                   step="0.01"
                   placeholder="0.00"
-                  value={payers[m.id] ?? ""}
-                  onChange={(e) => setPayers((p) => ({ ...p, [m.id]: e.target.value }))}
+                  value={payerAmt[id] ?? ""}
+                  onChange={(e) => editPayer(id, e.target.value)}
                 />
+                <button
+                  type="button"
+                  className="chip-cancel"
+                  aria-label={`Remove ${memberNameOf(id)} as a payer`}
+                  onClick={() => removePayer(id)}
+                >
+                  <Icon name="close" size={15} />
+                </button>
               </div>
             ))}
-            <small style={{ color: "var(--text-faint)" }}>
-              {money(inputCur, payerSum)} of {money(inputCur, amountNum)} accounted for.
-            </small>
+
+            {payerIds.length === 0 && (
+              <small style={{ color: "var(--text-faint)" }}>
+                Add everyone who chipped in — the amount splits equally between them.
+              </small>
+            )}
+
+            {unpaid.length > 0 && (
+              <select
+                aria-label="Add a payer"
+                value=""
+                onChange={(e) => addPayer(e.target.value)}
+              >
+                <option value="">
+                  {payerIds.length ? "＋ Add another payer…" : "＋ Add a payer…"}
+                </option>
+                {unpaid.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {payerIds.length > 0 && (
+              <small style={{ color: "var(--text-faint)" }}>
+                {money(inputCur, payerSum)} of {money(inputCur, amountNum)} accounted for
+                {manualPayers.size === 0 ? " · split equally" : ""}.
+              </small>
+            )}
           </div>
         ) : (
           <select value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>
