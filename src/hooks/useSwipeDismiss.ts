@@ -8,6 +8,12 @@ interface Options {
   onClose: () => void;
   /** Fraction of the panel's own size that must be dragged to dismiss. */
   threshold?: number;
+  /**
+   * Set when the handlers sit on an element that CONTAINS scrollable regions, so a
+   * drag starting inside one is left to that region. Unnecessary — and wrong —
+   * when the handlers are on a dedicated handle outside the scroll area.
+   */
+  guardScroll?: boolean;
 }
 
 /** Past this speed a short flick still dismisses, which is what fast swipes feel like. */
@@ -18,29 +24,38 @@ const SLOP = 8; // ignore taps and tiny jitters
  * Drag-to-dismiss for the drawer and the bottom sheets. Follows the finger while
  * dragging and springs back if released short of the threshold.
  *
- * Returns props to spread onto the panel plus the live transform, so the caller
- * decides how to apply it.
+ * Attach `panelRef` to the panel being moved (it supplies the size the threshold
+ * is measured against) and spread `handlers` onto whatever should be draggable.
+ * For a sheet that scrolls internally the handlers belong on a HANDLE, not the
+ * panel: the panel needs its default touch-action to scroll at all.
  */
-export function useSwipeDismiss({ axis, onClose, threshold = 0.25 }: Options) {
+export function useSwipeDismiss({
+  axis,
+  onClose,
+  threshold = 0.25,
+  guardScroll = false,
+}: Options) {
+  const panelRef = useRef<HTMLElement | null>(null);
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const start = useRef<{ x: number; y: number; t: number; size: number } | null>(null);
 
+  /** Size of the panel along the closing axis, for the dismissal threshold. */
+  const panelSize = (fallback: HTMLElement): number => {
+    const el = panelRef.current ?? fallback;
+    return axis === "x" ? el.offsetWidth : el.offsetHeight;
+  };
+
   /**
-   * A drag beginning inside a scrollable region belongs to that region, unless it
-   * is already pinned at the edge the swipe would move away from — otherwise the
-   * gesture fights the scroll.
+   * A drag beginning inside a scrollable region belongs to that region unless it
+   * is already pinned at the edge the swipe moves away from.
    */
   const scrollBlocks = (target: EventTarget | null): boolean => {
     let el = target as HTMLElement | null;
     while (el && el !== document.body) {
       const style = getComputedStyle(el);
-      const scrolls = /(auto|scroll)/.test(
-        axis === "y" ? style.overflowY : style.overflowX,
-      );
-      if (scrolls) {
-        if (axis === "y" ? el.scrollTop > 0 : el.scrollLeft > 0) return true;
-      }
+      const scrolls = /(auto|scroll)/.test(axis === "y" ? style.overflowY : style.overflowX);
+      if (scrolls && (axis === "y" ? el.scrollTop > 0 : el.scrollLeft > 0)) return true;
       el = el.parentElement;
     }
     return false;
@@ -54,13 +69,12 @@ export function useSwipeDismiss({ axis, onClose, threshold = 0.25 }: Options) {
 
   const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.pointerType === "mouse") return; // dragging with a mouse fights text selection
-    if (scrollBlocks(e.target)) return;
-    const el = e.currentTarget;
+    if (guardScroll && scrollBlocks(e.target)) return;
     start.current = {
       x: e.clientX,
       y: e.clientY,
       t: e.timeStamp,
-      size: axis === "x" ? el.offsetWidth : el.offsetHeight,
+      size: panelSize(e.currentTarget),
     };
   };
 
@@ -82,22 +96,17 @@ export function useSwipeDismiss({ axis, onClose, threshold = 0.25 }: Options) {
     }
 
     // Only travel in the closing direction; resist the other way.
-    const raw = axis === "x" ? Math.min(0, dx) : Math.max(0, dy);
-    setOffset(raw);
+    setOffset(axis === "x" ? Math.min(0, dx) : Math.max(0, dy));
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
     const s = start.current;
     if (!s || !dragging) return reset();
     const travelled = Math.abs(offset);
-    const elapsed = Math.max(1, e.timeStamp - s.t);
-    const velocity = travelled / elapsed;
-    if (travelled > s.size * threshold || velocity > FLICK_VELOCITY) {
-      reset();
-      onClose();
-      return;
-    }
-    reset(); // springs back — the transform returns to 0
+    const velocity = travelled / Math.max(1, e.timeStamp - s.t);
+    const dismiss = travelled > s.size * threshold || velocity > FLICK_VELOCITY;
+    reset();
+    if (dismiss) onClose();
   };
 
   const transform = dragging
@@ -107,6 +116,7 @@ export function useSwipeDismiss({ axis, onClose, threshold = 0.25 }: Options) {
     : undefined;
 
   return {
+    panelRef,
     dragging,
     transform,
     handlers: {
