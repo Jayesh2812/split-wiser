@@ -24,7 +24,7 @@ import { EmptyState } from "./components/EmptyState";
 import { Toast } from "./components/Toast";
 import { Splash } from "./components/Splash";
 import { clearInviteFromUrl, readInviteFromUrl } from "./lib/invite";
-import { readRoute, writeRoute } from "./lib/route";
+import { findGroupBySlug, readRoute, writeRoute } from "./lib/route";
 import { useScrollLock, useViewportVars } from "./hooks/useViewport";
 
 export type TabKey = "transactions" | "balances" | "settle";
@@ -71,11 +71,11 @@ export function App() {
     return isTab(t) ? t : "transactions";
   });
   /**
-   * Group id from the URL that has not been applied yet. Shared groups arrive
+   * Group slug from the URL that has not been applied yet. Shared groups arrive
    * asynchronously over the Firestore snapshot, so the target may not exist on
    * first render — hold it until it does.
    */
-  const [pendingGroup, setPendingGroup] = useState<string | null>(() => readRoute().group);
+  const [pendingSlug, setPendingSlug] = useState<string | null>(() => readRoute().slug);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
 
@@ -90,24 +90,28 @@ export function App() {
 
   // Apply the URL's group once it has loaded.
   useEffect(() => {
-    if (!pendingGroup) return;
-    if (state.groups.some((g) => g.id === pendingGroup)) {
-      setActiveGroup(pendingGroup);
-      setPendingGroup(null);
+    if (!pendingSlug) return;
+    const id = findGroupBySlug(state.groups, pendingSlug);
+    if (id) {
+      setActiveGroup(id);
+      setPendingSlug(null);
+    } else if (state.groups.length) {
+      // Loaded, but nothing matches — a deleted group or a stale link.
+      setPendingSlug(null);
     }
-  }, [pendingGroup, state.groups]);
+  }, [pendingSlug, state.groups]);
 
   // Adopt the first group if none is active (e.g. after restore or sign-out).
   // Held off while a URL group is still pending, or we would flash the wrong one.
   useEffect(() => {
-    if (pendingGroup) return;
+    if (pendingSlug) return;
     if (!state.activeGroupId && state.groups.length) setActiveGroup(state.groups[0]!.id);
-  }, [state.activeGroupId, state.groups, pendingGroup]);
+  }, [state.activeGroupId, state.groups, pendingSlug]);
 
   // Keep the URL in step with where the user actually is.
   useEffect(() => {
-    writeRoute(group?.id ?? null, tab);
-  }, [group?.id, tab]);
+    writeRoute(group, state.groups, tab);
+  }, [group, state.groups, tab]);
 
   const closeModal = () => setModal({ type: "none" });
 

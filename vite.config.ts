@@ -8,7 +8,9 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
   },
-  base: "./",
+  // Absolute, not "./": path routing serves the app from nested URLs, where
+  // relative asset references would resolve against the wrong directory.
+  base: "/",
   plugins: [
     react(),
     VitePWA({
@@ -18,18 +20,18 @@ export default defineConfig({
         name: "Splitwiser — Offline Expense Splitter",
         short_name: "Splitwiser",
         description: "Offline-first group expense splitter with greedy settlement and PDF/CSV export.",
-        start_url: "./index.html",
-        scope: "./",
+        start_url: "/",
+        scope: "/",
         display: "standalone",
         orientation: "portrait",
         background_color: "#0a0a0a",
         theme_color: "#0a0a0a",
         categories: ["finance", "productivity", "utilities"],
         icons: [
-          { src: "icons/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-          { src: "icons/icon-maskable.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
-          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icons/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+          { src: "/icons/icon-maskable.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
         ],
       },
       workbox: {

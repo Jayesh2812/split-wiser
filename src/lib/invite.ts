@@ -1,12 +1,14 @@
 /**
- * Invite links. A link is just the app URL carrying `?join=CODE`, so it works
- * with the relative base the PWA is built with and needs no server routing.
+ * Invite links. A link is the app root carrying `?join=CODE` — a query param, so
+ * it stays independent of the path-based group/tab routing in route.ts.
  */
 const PARAM = "join";
 
 export function inviteLink(code: string): string {
-  const { origin, pathname } = window.location;
-  return `${origin}${pathname}?${PARAM}=${encodeURIComponent(code)}`;
+  // Always the root: the app now routes by path, so the current pathname would
+  // otherwise bake whatever group and tab the sharer happened to be looking at
+  // into the invite.
+  return `${window.location.origin}/?${PARAM}=${encodeURIComponent(code)}`;
 }
 
 /** The invite code in the current URL, if any. */

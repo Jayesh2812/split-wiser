@@ -14,7 +14,7 @@ vi.mock("./lib/firebase", () => ({
 }));
 
 const { App } = await import("./App");
-const { resetAll } = await import("./lib/store");
+const { resetAll, getState } = await import("./lib/store");
 
 beforeEach(() => {
   localStorage.clear();
@@ -332,37 +332,61 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.getByText(/2 members/)).toBeTruthy();
   });
 
-  it("keeps the group and tab in the URL, and restores them on reload", async () => {
+  it("puts the group slug and tab in the path, and restores them on reload", async () => {
     const { unmount } = render(<App />);
-    createSoloGroup("Trip", "Alex\nSam");
+    createSoloGroup("Goa Trip", "Alex\nSam");
     await addExpense("Dinner", "100");
 
-    const groupId = () => new URLSearchParams(window.location.search).get("g");
-    const tabParam = () => new URLSearchParams(window.location.search).get("t");
-
-    expect(groupId()).toBeTruthy();
-    expect(tabParam()).toBe("transactions");
+    // The group name becomes a readable slug, not an opaque id.
+    expect(window.location.pathname).toBe("/goa-trip/transactions");
 
     fireEvent.click(screen.getByRole("tab", { name: "Balances" }));
-    expect(tabParam()).toBe("balances");
+    expect(window.location.pathname).toBe("/goa-trip/balances");
 
     // Simulate a refresh: same URL, fresh mount, same state on disk.
-    const saved = groupId();
     unmount();
     render(<App />);
     expect(
       (screen.getByRole("tab", { name: "Balances" }) as HTMLElement).className,
     ).toContain("active");
-    expect(groupId()).toBe(saved);
+    expect(window.location.pathname).toBe("/goa-trip/balances");
   });
 
-  it("ignores an unknown tab in the URL", () => {
-    window.history.replaceState({}, "", "/?t=nonsense");
+  it("follows the slug when a rename changes it", () => {
+    render(<App />);
+    createSoloGroup("Goa Trip", "Alex");
+    expect(window.location.pathname).toBe("/goa-trip/transactions");
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings for Goa Trip" }));
+    fireEvent.change(screen.getByDisplayValue("Goa Trip"), { target: { value: "Manali" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(window.location.pathname).toBe("/manali/transactions");
+  });
+
+  it("ignores an unknown tab in the path", () => {
+    window.history.replaceState({}, "", "/whatever/nonsense");
     render(<App />);
     createSoloGroup("Trip", "Alex");
     expect(
       (screen.getByRole("tab", { name: "Transactions" }) as HTMLElement).className,
     ).toContain("active");
+  });
+
+  it("still honours an old ?g=&t= link", async () => {
+    render(<App />);
+    createSoloGroup("Goa Trip", "Alex");
+    const id = getState().groups[0]!.id;
+    cleanup();
+
+    window.history.replaceState({}, "", `/?g=${id}&t=balances`);
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("tab", { name: "Balances" }) as HTMLElement).className,
+      ).toContain("active"),
+    );
+    // ...and is rewritten to the path form.
+    expect(window.location.pathname).toBe("/goa-trip/balances");
   });
 
   it("toggles greedy settlement mode", () => {
