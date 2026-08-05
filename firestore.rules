@@ -35,6 +35,9 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid;
 
       allow read: if isMember();
+      // Members may rewrite members/memberUids/transactions wholesale, which a
+      // member merge requires: it folds one person into another and has to
+      // rewrite every transaction that referenced the old id.
       allow update: if isMember() || isJoiningSelf();
       // Only the owner can destroy the group for everyone.
       allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;

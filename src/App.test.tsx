@@ -268,6 +268,67 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.queryByRole("button", { name: "Clear filter" })).toBeNull();
   });
 
+  it("records an expense paid by several people", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ Add" }));
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Several people paid" }));
+
+    // Two contribution inputs appear, one per member.
+    const boxes = [...document.querySelectorAll<HTMLInputElement>(".split-row input[type=number]")];
+    fireEvent.change(boxes[0]!, { target: { value: "70" } });
+    fireEvent.change(boxes[1]!, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.queryByText("Add transaction")).toBeNull());
+
+    // 100 split two ways with 70/30 contributions leaves Alex owed 20.
+    fireEvent.click(screen.getByRole("tab", { name: "Balances" }));
+    const alexCard = screen.getByText("Alex").closest(".balance-card") as HTMLElement;
+    expect(within(alexCard).getByText("₹20.00")).toBeTruthy();
+  });
+
+  it("converts an expense paid in another currency", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+
+    fireEvent.click(screen.getByRole("button", { name: "＋ Add" }));
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Paid in another currency" }));
+    fireEvent.change(screen.getByPlaceholderText("EUR"), { target: { value: "EUR" } });
+    fireEvent.change(screen.getByPlaceholderText(/1 EUR = /), { target: { value: "90" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(screen.queryByText("Add transaction")).toBeNull());
+
+    // 10 EUR at 90 = 900, so Sam owes Alex 450 in the group currency.
+    fireEvent.click(screen.getByRole("tab", { name: "Balances" }));
+    const samCard = screen.getByText("Sam").closest(".balance-card") as HTMLElement;
+    expect(within(samCard).getByText("₹450.00")).toBeTruthy();
+  });
+
+  it("merges a duplicate member, keeping their history", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam\nSam");
+    await addExpense("Dinner", "90");
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const chips = () => [...document.querySelectorAll<HTMLElement>(".member-chip")];
+    expect(chips().length).toBe(3);
+
+    // Fold the second Sam into the first.
+    const dupes = chips().filter((c) => c.textContent?.includes("Sam"));
+    fireEvent.click(within(dupes[1]!).getByRole("button", { name: /^Merge/ }));
+    const options = document.querySelector(".merge-options") as HTMLElement;
+    fireEvent.click(within(options).getByRole("button", { name: "Sam" }));
+
+    await waitFor(() => expect(chips().length).toBe(2));
+    // The expense survived the merge rather than being dropped.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByText("Dinner")).toBeTruthy();
+    expect(screen.getByText(/2 members/)).toBeTruthy();
+  });
+
   it("toggles greedy settlement mode", () => {
     render(<App />);
     createSoloGroup("", "Alex\nSam");

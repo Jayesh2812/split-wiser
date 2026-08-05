@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { Group, Transfer } from "../types";
-import { memberName, settle } from "../lib/finance";
+import type { AuthUser, Group, Transfer } from "../types";
+import { memberName, myMemberId, settle } from "../lib/finance";
 import { colorFor, initials, money } from "../lib/format";
 import { setGreedyMode } from "../lib/store";
 import { toast } from "../lib/toast";
@@ -9,6 +9,7 @@ import { Icon } from "./Icon";
 interface Props {
   group: Group;
   greedy: boolean;
+  user: AuthUser | null;
   onRecord: (transfer: Transfer) => void;
 }
 
@@ -21,11 +22,13 @@ const ROLES: { key: Role; label: string }[] = [
   { key: "receiving", label: "Receiving" },
 ];
 
-export function SettlePanel({ group, greedy, onRecord }: Props) {
+export function SettlePanel({ group, greedy, user, onRecord }: Props) {
   const cur = group.currency;
   const plan = settle(group, greedy);
+  const me = myMemberId(group, user?.uid);
 
-  const [person, setPerson] = useState<string>("all");
+  // Default to your own transfers — "what do I owe" is the usual question.
+  const [person, setPerson] = useState<string>(() => me ?? "all");
   const [role, setRole] = useState<Role>("all");
   const [showInfo, setShowInfo] = useState(false);
   /** Only the person picker collapses — the side segment is one compact row. */
@@ -53,7 +56,7 @@ export function SettlePanel({ group, greedy, onRecord }: Props) {
     ? "Greedy: fewest possible payments. Balances are pooled, so who-paid-for-whom is not preserved — just the minimal set of transfers to zero everyone out."
     : "Direct: mirrors actual expenses. Each person repays whoever paid on their behalf (mutual debts netted). More payments, but fully traceable.";
 
-  const name = focused === "all" ? "" : memberName(group, focused);
+  const name = focused === "all" ? "" : focused === me ? "You" : memberName(group, focused);
 
   return (
     <section className="tab-panel">
@@ -130,7 +133,7 @@ export function SettlePanel({ group, greedy, onRecord }: Props) {
                 <option value="all">Everyone</option>
                 {group.members.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name}
+                    {m.id === me ? `${m.name} (you)` : m.name}
                   </option>
                 ))}
               </select>
@@ -156,7 +159,8 @@ export function SettlePanel({ group, greedy, onRecord }: Props) {
                 <div className="stat">
                   <b className="neg">{money(cur, pays)}</b>
                   <span>
-                    {name} pays {payCount} {payCount === 1 ? "person" : "people"}
+                    {name} {focused === me ? "pay" : "pays"} {payCount}{" "}
+                    {payCount === 1 ? "person" : "people"}
                   </span>
                 </div>
                 <div className="stat">
@@ -176,10 +180,12 @@ export function SettlePanel({ group, greedy, onRecord }: Props) {
       ) : shown.length === 0 ? (
         <div className="hint">
           {role === "paying"
-            ? `${name} doesn't owe anyone.`
+            ? focused === me
+              ? "You don't owe anyone."
+              : `${name} doesn't owe anyone.`
             : role === "receiving"
-              ? `Nobody owes ${name}.`
-              : `${name} is settled up.`}
+              ? `Nobody owes ${focused === me ? "you" : name}.`
+              : `${name} ${focused === me ? "are" : "is"} settled up.`}
         </div>
       ) : (
         <>

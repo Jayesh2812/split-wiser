@@ -4,9 +4,12 @@ import {
   groupTotals,
   isPayment,
   memberName,
+  nameForUid,
   paymentRecipient,
   settle,
+  txPayers,
   txShares,
+  txTotalInGroup,
 } from "./finance";
 import { dateStamp, safeName } from "./format";
 import { exportBackup as storeBackup } from "./store";
@@ -46,14 +49,17 @@ export function buildCsv(g: Group, greedy: boolean): string {
   rows.push([]);
 
   rows.push(["TRANSACTIONS"]);
-  rows.push(["Date", "Type", "Description", "Category", "Amount", "Paid by", "Split type", "Participants", "Per-person breakdown", "Note"]);
+  rows.push(["Date", "Type", "Description", "Category", "Amount", "Currency", "Rate", `Amount (${cur})`, "Paid by", "Split type", "Participants", "Per-person breakdown", "Added by", "Note"]);
   for (const t of sortedTx(g)) {
     const shares = txShares(t);
     const breakdown = t.split.among
       .map((id) => `${memberName(g, id)}: ${fmtMoney(cur, (shares[id] ?? 0) / 100)}`)
       .join("; ");
     const participants = t.split.among.map((id) => memberName(g, id)).join("; ");
-    rows.push([t.date, isPayment(t) ? "Payment" : "Expense", t.description, t.category, fmtMoney(cur, t.amount), memberName(g, t.paidBy), t.split.type, participants, breakdown, t.note]);
+    const paidByAll = Object.entries(txPayers(t))
+      .map(([id, amt]) => `${memberName(g, id)}: ${fmtMoney(t.currency || cur, amt)}`)
+      .join("; ");
+    rows.push([t.date, isPayment(t) ? "Payment" : "Expense", t.description, t.category, fmtMoney(t.currency || cur, t.amount), t.currency || cur, t.rate ?? 1, fmtMoney(cur, txTotalInGroup(t)), paidByAll, t.split.type, participants, breakdown, nameForUid(g, t.addedByUid) ?? "", t.note]);
   }
 
   const payments = sortedTx(g).filter(isPayment);
@@ -111,7 +117,14 @@ export function buildReportHtml(g: Group, greedy: boolean): string {
   for (const t of txs) {
     const among = t.split.among.map((id) => memberName(g, id)).join(", ");
     const label = isPayment(t) ? `${t.category} ${t.description} (payment)` : `${t.category} ${t.description}`;
-    html += `<tr><td>${esc(t.date)}</td><td>${esc(label)}${t.note ? `<br><small>${esc(t.note)}</small>` : ""}</td><td>${esc(memberName(g, t.paidBy))}</td><td class="num">${esc(fmtMoney(cur, t.amount))}</td><td>${esc(among)}</td></tr>`;
+    const payerList = Object.keys(txPayers(t))
+      .map((id) => memberName(g, id))
+      .join(", ");
+    // Show what was actually paid, and the group-currency value it nets at.
+    const amountCell = t.currency && t.currency !== cur
+      ? `${fmtMoney(t.currency, t.amount)}<br><small>${fmtMoney(cur, txTotalInGroup(t))}</small>`
+      : fmtMoney(cur, txTotalInGroup(t));
+    html += `<tr><td>${esc(t.date)}</td><td>${esc(label)}${t.note ? `<br><small>${esc(t.note)}</small>` : ""}</td><td>${esc(payerList)}</td><td class="num">${amountCell}</td><td>${esc(among)}</td></tr>`;
   }
   html += "</tbody></table>";
 

@@ -21,11 +21,14 @@ export function SettingsModal({ group, user, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   /** Member awaiting delete confirmation — the chip swaps to a confirm/cancel pair. */
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+  /** Member being folded into someone else, awaiting a target. */
+  const [mergeFrom, setMergeFrom] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const shared = group.kind === "shared";
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-  const isOwner = !shared || group.ownerUid === user?.uid;
+  const isOwner = !shared || (!!user?.uid && group.ownerUid === user.uid);
+  const isMe = (memberUid?: string | null) => !!user?.uid && !!memberUid && memberUid === user.uid;
 
   const run = async (fn: () => Promise<unknown>) => {
     try {
@@ -57,6 +60,13 @@ export function SettingsModal({ group, user, onClose }: Props) {
             : "Can't remove.",
         );
       }
+    });
+
+  const merge = (fromId: string, intoId: string) =>
+    run(async () => {
+      setMergeFrom(null);
+      await repo.mergeMembers(group, fromId, intoId);
+      toast("Members merged");
     });
 
   const copyCode = async () => {
@@ -249,7 +259,18 @@ export function SettingsModal({ group, user, onClose }: Props) {
                 title={m.uid ? "Joined with Google" : "Name-only participant"}
               >
                 {m.name}
-                {m.uid === user?.uid && <em className="you-tag">you</em>}
+                {isMe(m.uid) && <em className="you-tag">you</em>}
+                {group.members.length > 1 && (
+                  <button
+                    className="chip-merge"
+                    title={`Merge ${m.name} into another member`}
+                    aria-label={`Merge ${m.name}`}
+                    onClick={() => setMergeFrom(m.id)}
+                    disabled={busy}
+                  >
+                    <Icon name="users" size={13} />
+                  </button>
+                )}
                 <button
                   title="Remove"
                   onClick={() => setPendingRemove(m.id)}
@@ -261,10 +282,40 @@ export function SettingsModal({ group, user, onClose }: Props) {
             ),
           )}
         </div>
+        {mergeFrom && (
+          <div className="merge-panel">
+            <b>Merge {repo.getGroup(group.id)?.members.find((m) => m.id === mergeFrom)?.name}</b>
+            <small>
+              Pick who they really are. Every expense, split and payment moves across, and the
+              duplicate disappears. Use this when someone was added by name and then joined with
+              Google.
+            </small>
+            <div className="merge-options">
+              {group.members
+                .filter((m) => m.id !== mergeFrom)
+                .map((m) => (
+                  <button
+                    key={m.id}
+                    className="btn btn-ghost"
+                    onClick={() => merge(mergeFrom, m.id)}
+                    disabled={busy}
+                  >
+                    {m.name}
+                    {isMe(m.uid) ? " (you)" : ""}
+                  </button>
+                ))}
+            </div>
+            <button className="btn btn-ghost btn-block" onClick={() => setMergeFrom(null)}>
+              Cancel
+            </button>
+          </div>
+        )}
+
         {shared && (
           <small style={{ color: "var(--text-faint)" }}>
             A coloured glow means they joined with Google. Plain chips are name-only
-            participants you track manually.
+            participants you track manually. If someone appears twice, merge the duplicate into
+            their account with the merge button.
           </small>
         )}
       </div>

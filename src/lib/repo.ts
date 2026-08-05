@@ -98,6 +98,23 @@ export async function removeMember(
   return store.removeMember(group.id, memberId);
 }
 
+/**
+ * Fold one member into another, preserving all history. Fixes groups where the
+ * same person exists twice — added by name, then joined by code.
+ */
+export async function mergeMembers(
+  group: Group,
+  fromId: string,
+  intoId: string,
+): Promise<void> {
+  if (fromId === intoId) return;
+  if (isShared(group)) {
+    await cloud.mergeCloudMembers(store.mergeMembers(group, fromId, intoId));
+  } else {
+    store.mergeMembersLocal(group.id, fromId, intoId);
+  }
+}
+
 export async function renameMember(group: Group, memberId: string, name: string): Promise<void> {
   if (isShared(group)) {
     const prev = group.members.find((x) => x.id === memberId);
@@ -127,15 +144,41 @@ export async function updateTransaction(
   group: Group,
   txId: string,
   draft: TxDraft,
+  user: AuthUser | null = null,
 ): Promise<void> {
   if (isShared(group)) {
     const prev = group.transactions.find((t) => t.id === txId);
     if (!prev) return;
-    const next = store.normalizeTx({ ...prev, ...draft, id: txId });
+    // updatedAt/By let dedupeTransactions pick a winner if this edit races
+    // another and arrayRemove fails to match the stale `prev`.
+    const next = store.normalizeTx({
+      ...prev,
+      ...draft,
+      id: txId,
+      updatedAt: Date.now(),
+      updatedByUid: user?.uid ?? prev.updatedByUid ?? null,
+    });
     await cloud.updateCloudTransaction(group.id, prev, next);
   } else {
     store.updateTransaction(group.id, txId, draft);
   }
+}
+
+/**
+ * Add any recurring instances that have come due. Safe to call on every open and
+ * from every device: instance ids are derived from the template and date, so
+ * concurrent materialisation produces identical rows that dedupe on ingest.
+ */
+export async function materialiseRecurring(
+  group: Group,
+  user: AuthUser | null,
+): Promise<number> {
+  if (!isShared(group)) return store.materialiseRecurringLocal(group.id).length;
+  const due = store.dueInstances(group);
+  for (const tx of due) {
+    await cloud.addCloudTransaction(group.id, { ...tx, addedByUid: user?.uid ?? null });
+  }
+  return due.length;
 }
 
 /**

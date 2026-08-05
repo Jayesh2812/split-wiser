@@ -26,6 +26,73 @@ export function paymentRecipient(t: Transaction): string | null {
   return isPayment(t) ? (t.split.among[0] ?? null) : null;
 }
 
+/** Name the person behind a uid, for attribution. */
+export function nameForUid(g: Group, uid: string | null | undefined): string | null {
+  if (!uid) return null;
+  return g.members.find((m) => m.uid === uid)?.name ?? null;
+}
+
+/** The member slot belonging to the signed-in user, if they hold one. */
+export function myMemberId(g: Group, uid: string | null | undefined): string | null {
+  if (!uid) return null;
+  return g.members.find((m) => m.uid === uid)?.id ?? null;
+}
+
+/** Group-currency units per unit of the transaction's currency. */
+export const txRate = (t: Pick<Transaction, "rate">): number => {
+  const r = Number(t.rate);
+  return Number.isFinite(r) && r > 0 ? r : 1;
+};
+
+/** True when the transaction was paid in something other than the group currency. */
+export function isForeign(t: Pick<Transaction, "currency">, groupCurrency: string): boolean {
+  return !!t.currency && t.currency !== groupCurrency;
+}
+
+/** The transaction total converted into the group's currency. */
+export function txTotalInGroup(t: Pick<Transaction, "amount" | "rate">): number {
+  return round2((Number(t.amount) || 0) * txRate(t));
+}
+
+/**
+ * Who actually put money in, as member id -> amount in the transaction's own
+ * currency. Falls back to the single `paidBy` when `payers` is absent, which is
+ * the common case and how every pre-existing transaction is stored.
+ */
+export function txPayers(
+  t: Pick<Transaction, "amount" | "paidBy" | "payers">,
+): Record<string, number> {
+  const multi = t.payers;
+  if (multi) {
+    const entries = Object.entries(multi).filter(([, v]) => (Number(v) || 0) > 0);
+    if (entries.length) return Object.fromEntries(entries.map(([k, v]) => [k, Number(v) || 0]));
+  }
+  return { [t.paidBy]: Number(t.amount) || 0 };
+}
+
+/**
+ * Distribute `totalCents` across `keys` in proportion to `weights`, absorbing
+ * rounding drift into the last key so the parts always sum to the total.
+ */
+function apportion(keys: string[], weights: number[], totalCents: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  const wsum = weights.reduce((a, b) => a + b, 0);
+  if (!keys.length) return out;
+  if (wsum <= 0) {
+    out[keys[keys.length - 1]!] = totalCents;
+    return out;
+  }
+  let allocated = 0;
+  keys.forEach((k, i) => {
+    const c = Math.round((totalCents * weights[i]!) / wsum);
+    out[k] = c;
+    allocated += c;
+  });
+  const last = keys[keys.length - 1]!;
+  out[last] = (out[last] ?? 0) + (totalCents - allocated);
+  return out;
+}
+
 /**
  * How much each participant owes for a single transaction, in cents.
  * The returned values always sum to the transaction total (payer's share included).
@@ -71,11 +138,20 @@ export function computeBalances(g: Group): Record<string, number> {
   for (const m of g.members) net[m.id] = 0;
 
   for (const t of g.transactions) {
-    net[t.paidBy] = (net[t.paidBy] ?? 0) + toCents(t.amount);
-    const shares = txShares(t);
-    for (const id of Object.keys(shares)) {
-      net[id] = (net[id] ?? 0) - shares[id]!;
-    }
+    // Everything nets in the GROUP's currency, so a foreign expense is converted
+    // once at the total and the parts are apportioned from that. Converting each
+    // share independently would let rounding drift break the zero-sum invariant.
+    const totalCents = toCents(txTotalInGroup(t));
+
+    const payers = txPayers(t);
+    const payerIds = Object.keys(payers);
+    const paid = apportion(payerIds, payerIds.map((id) => payers[id]!), totalCents);
+    for (const id of payerIds) net[id] = (net[id] ?? 0) + paid[id]!;
+
+    const localShares = txShares(t);
+    const oweIds = Object.keys(localShares);
+    const owed = apportion(oweIds, oweIds.map((id) => localShares[id]!), totalCents);
+    for (const id of oweIds) net[id] = (net[id] ?? 0) - owed[id]!;
   }
 
   const out: Record<string, number> = {};
@@ -102,7 +178,7 @@ export function groupTotals(g: Group): GroupTotals {
       payments++;
       continue;
     }
-    total += toCents(t.amount);
+    total += toCents(txTotalInGroup(t));
     count++;
   }
   return { total: fromCents(total), count, payments, members: g.members.length };
@@ -152,9 +228,20 @@ export function settleDirect(g: Group): Transfer[] {
   };
 
   for (const t of g.transactions) {
-    const shares = txShares(t);
-    for (const id of Object.keys(shares)) {
-      if (id !== t.paidBy) bump(id, t.paidBy, shares[id]!);
+    const totalCents = toCents(txTotalInGroup(t));
+    const localShares = txShares(t);
+    const oweIds = Object.keys(localShares);
+    const owed = apportion(oweIds, oweIds.map((id) => localShares[id]!), totalCents);
+
+    // With several payers, each debtor's share is owed to them in proportion to
+    // what each put in — that is what keeps direct settlement traceable.
+    const payers = txPayers(t);
+    const payerIds = Object.keys(payers);
+    for (const debtor of oweIds) {
+      const share = owed[debtor]!;
+      if (share <= 0) continue;
+      const toEach = apportion(payerIds, payerIds.map((id) => payers[id]!), share);
+      for (const creditor of payerIds) bump(debtor, creditor, toEach[creditor]!);
     }
   }
 

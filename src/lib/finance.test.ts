@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { Group, Transaction } from "../types";
 import {
   computeBalances,
+  txPayers,
+  txTotalInGroup,
   groupTotals,
   isPayment,
   paymentRecipient,
@@ -24,8 +26,13 @@ function tx(partial: Partial<Transaction> & Pick<Transaction, "amount" | "paidBy
     paidBy: partial.paidBy,
     createdAt: partial.createdAt ?? 0,
     split: partial.split,
-    // Mirrors normalizeTx: the key is absent unless this is a payment.
+    // Mirrors normalizeTx: optional keys are absent unless explicitly set.
     ...(partial.kind === "payment" ? { kind: "payment" as const } : {}),
+    ...(partial.payers ? { payers: partial.payers } : {}),
+    ...(partial.currency ? { currency: partial.currency } : {}),
+    ...(partial.rate ? { rate: partial.rate } : {}),
+    ...(partial.recurrence ? { recurrence: partial.recurrence } : {}),
+    ...(partial.repeatOf ? { repeatOf: partial.repeatOf } : {}),
   };
 }
 
@@ -236,5 +243,93 @@ describe("settlement payments", () => {
     const bal = computeBalances(g);
     expect(approx(bal[A]!, 20)).toBe(true);
     expect(approx(bal[C]!, -20)).toBe(true);
+  });
+});
+
+describe("multiple payers", () => {
+  it("credits each payer their own contribution", () => {
+    const g: Group = {
+      ...makeGroup(),
+      transactions: [
+        tx({
+          amount: 100,
+          paidBy: A, // largest contributor, kept for older clients
+          payers: { [A]: 70, [B]: 30 },
+          split: { type: "equal", among: [A, B, C], shares: {} },
+        }),
+      ],
+    };
+    const bal = computeBalances(g);
+    // 100 three ways is 33.34/33.33/33.33 — the leftover cent goes to the first
+    // id in `among`, which is A. A put in 70, B 30, C nothing.
+    expect(approx(bal[A]!, 70 - 33.34)).toBe(true);
+    expect(approx(bal[B]!, 30 - 33.33)).toBe(true);
+    expect(approx(bal[C]!, -33.33)).toBe(true);
+    expect(approx(Object.values(bal).reduce((x, y) => x + y, 0), 0)).toBe(true);
+  });
+
+  it("falls back to paidBy when payers is absent", () => {
+    const t = tx({ amount: 50, paidBy: A, split: { type: "equal", among: [A, B], shares: {} } });
+    expect(txPayers(t)).toEqual({ [A]: 50 });
+  });
+
+  it("ignores a payers map with a single entry", () => {
+    const t = tx({ amount: 50, paidBy: A, payers: { [A]: 50 }, split: { type: "equal", among: [A, B], shares: {} } });
+    expect(txPayers(t)).toEqual({ [A]: 50 });
+  });
+
+  it("splits direct debts across payers in proportion", () => {
+    const g: Group = {
+      ...makeGroup(),
+      transactions: [
+        tx({ amount: 100, paidBy: A, payers: { [A]: 50, [B]: 50 }, split: { type: "exact", among: [C], shares: { [C]: 100 } } }),
+      ],
+    };
+    const plan = settle(g, false);
+    // C owes 100, half to each payer.
+    expect(plan.length).toBe(2);
+    for (const t of plan) {
+      expect(t.from).toBe(C);
+      expect(approx(t.amount, 50)).toBe(true);
+    }
+  });
+});
+
+describe("foreign currency", () => {
+  it("converts the total at the rate", () => {
+    expect(approx(txTotalInGroup({ amount: 10, rate: 90 }), 900)).toBe(true);
+    expect(approx(txTotalInGroup({ amount: 10 }), 10)).toBe(true); // no rate = 1
+  });
+
+  it("nets balances in the group currency", () => {
+    const g: Group = {
+      ...makeGroup(),
+      transactions: [
+        // 10 EUR at 90 INR/EUR = 900 INR, split two ways.
+        tx({ amount: 10, currency: "EUR", rate: 90, paidBy: A, split: { type: "equal", among: [A, B], shares: {} } }),
+      ],
+    };
+    const bal = computeBalances(g);
+    expect(approx(bal[A]!, 450)).toBe(true);
+    expect(approx(bal[B]!, -450)).toBe(true);
+  });
+
+  it("keeps the zero-sum invariant on an awkward rate", () => {
+    const g: Group = {
+      ...makeGroup(),
+      transactions: [
+        tx({ amount: 33.33, currency: "EUR", rate: 91.7431, paidBy: A, split: { type: "equal", among: [A, B, C], shares: {} } }),
+      ],
+    };
+    const total = Object.values(computeBalances(g)).reduce((x, y) => x + y, 0);
+    expect(approx(total, 0)).toBe(true);
+  });
+
+  it("counts converted amounts in spending totals", () => {
+    const g: Group = {
+      ...makeGroup(),
+      transactions: [tx({ amount: 10, currency: "EUR", rate: 90, paidBy: A, split: { type: "equal", among: [A], shares: {} } })],
+    };
+    expect(approx(groupTotals(g).total, 900)).toBe(true);
   });
 });

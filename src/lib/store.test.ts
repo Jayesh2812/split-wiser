@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { Group } from "../types";
+import type { Group, Transaction } from "../types";
+import { computeBalances } from "./finance";
 import {
   addMember,
   addTransaction,
   buildPayment,
+  dedupeTransactions,
+  dueInstances,
+  mergeMembers,
   normalizeTx,
   recordPayment,
   clearSharedGroups,
@@ -20,6 +24,8 @@ import {
 } from "./store";
 
 beforeEach(() => resetAll());
+
+const approxEq = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
 describe("store", () => {
   it("creates a group and makes it active", () => {
@@ -216,5 +222,166 @@ describe("settlement payments in the store", () => {
     expect(
       recordPayment("nope", { from: "a", to: "b", amount: 5, date: "2026-01-02", note: "" }),
     ).toBe(null);
+  });
+});
+
+/** Minimal transaction for pure-function tests. */
+function t(over: Partial<Transaction> & Pick<Transaction, "id">): Transaction {
+  return {
+    description: "x", category: "🧾", amount: 30, date: "2026-01-01", note: "",
+    paidBy: "a", createdAt: 0, split: { type: "equal", among: ["a", "b"], shares: {} },
+    ...over,
+  };
+}
+
+describe("dedupeTransactions", () => {
+  it("keeps the most recently edited copy of a duplicated id", () => {
+    const out = dedupeTransactions([
+      t({ id: "t1", amount: 10, updatedAt: 100 }),
+      t({ id: "t1", amount: 99, updatedAt: 200 }),
+      t({ id: "t2", amount: 5 }),
+    ]);
+    expect(out.length).toBe(2);
+    expect(out.find((x) => x.id === "t1")!.amount).toBe(99);
+  });
+
+  it("falls back to createdAt when updatedAt is absent", () => {
+    const out = dedupeTransactions([
+      t({ id: "t1", amount: 10, createdAt: 5 }),
+      t({ id: "t1", amount: 20, createdAt: 9 }),
+    ]);
+    expect(out.length).toBe(1);
+    expect(out[0]!.amount).toBe(20);
+  });
+
+  it("leaves distinct ids untouched", () => {
+    const list = [t({ id: "a" }), t({ id: "b" }), t({ id: "c" })];
+    expect(dedupeTransactions(list).length).toBe(3);
+  });
+});
+
+describe("mergeMembers", () => {
+  const base: Group = {
+    id: "g", name: "Trip", currency: "₹", kind: "shared", createdAt: 0,
+    ownerUid: "u1", memberUids: ["u1", "u2"],
+    members: [
+      { id: "ghost", name: "Sam" },              // added by name
+      { id: "real", name: "Sam", uid: "u2" },    // then joined by code
+      { id: "alex", name: "Alex", uid: "u1" },
+    ],
+    transactions: [
+      t({ id: "t1", paidBy: "ghost", amount: 60, split: { type: "equal", among: ["ghost", "alex"], shares: {} } }),
+      t({ id: "t2", paidBy: "alex", amount: 40, split: { type: "exact", among: ["ghost", "alex"], shares: { ghost: 25, alex: 15 } } }),
+    ],
+  };
+
+  it("moves every reference onto the surviving member", () => {
+    const g = mergeMembers(base, "ghost", "real");
+    expect(g.members.map((m) => m.id).sort()).toEqual(["alex", "real"]);
+    expect(g.transactions[0]!.paidBy).toBe("real");
+    expect(g.transactions[0]!.split.among).toContain("real");
+    expect(g.transactions[0]!.split.among).not.toContain("ghost");
+    expect(g.transactions[1]!.split.shares["real"]).toBe(25);
+    expect(g.transactions[1]!.split.shares["ghost"]).toBeUndefined();
+  });
+
+  it("preserves the total owed — nothing is lost or double counted", () => {
+    const before = computeBalances(base);
+    const after = computeBalances(mergeMembers(base, "ghost", "real"));
+    expect(approxEq((before["ghost"] ?? 0) + (before["real"] ?? 0), after["real"]!)).toBe(true);
+    expect(approxEq(before["alex"]!, after["alex"]!)).toBe(true);
+  });
+
+  it("ADDS shares when both ids appear in one transaction", () => {
+    const both: Group = {
+      ...base,
+      transactions: [
+        t({ id: "t3", paidBy: "alex", amount: 30,
+            split: { type: "exact", among: ["ghost", "real"], shares: { ghost: 10, real: 20 } } }),
+      ],
+    };
+    const g = mergeMembers(both, "ghost", "real");
+    expect(g.transactions[0]!.split.shares["real"]).toBe(30);
+    expect(g.transactions[0]!.split.among).toEqual(["real"]);
+  });
+
+  it("folds a payers map and collapses it when one payer remains", () => {
+    const multi: Group = {
+      ...base,
+      transactions: [t({ id: "t4", paidBy: "ghost", amount: 50, payers: { ghost: 20, real: 30 } })],
+    };
+    const g = mergeMembers(multi, "ghost", "real");
+    // Both payers were the same person, so it is no longer a multi-payer expense.
+    expect(g.transactions[0]!.payers).toBeUndefined();
+    expect(g.transactions[0]!.paidBy).toBe("real");
+  });
+
+  it("drops the absorbed member's uid from memberUids", () => {
+    const g = mergeMembers(base, "real", "ghost");
+    expect(g.memberUids).not.toContain("u2");
+  });
+
+  it("is a no-op for unknown or identical ids", () => {
+    expect(mergeMembers(base, "ghost", "ghost")).toBe(base);
+    expect(mergeMembers(base, "nope", "real")).toBe(base);
+  });
+});
+
+describe("dueInstances (recurring)", () => {
+  const monthly: Group = {
+    id: "g", name: "Flat", currency: "₹", kind: "local", createdAt: 0,
+    members: [{ id: "a", name: "A" }, { id: "b", name: "B" }],
+    transactions: [t({ id: "rent", date: "2026-01-01", amount: 1000, recurrence: "monthly" })],
+  };
+
+  it("fills in every period that has come due", () => {
+    const due = dueInstances(monthly, new Date("2026-04-15T00:00:00"));
+    expect(due.map((d) => d.date)).toEqual(["2026-02-01", "2026-03-01", "2026-04-01"]);
+  });
+
+  it("gives instances deterministic ids so two devices cannot double-add", () => {
+    const a = dueInstances(monthly, new Date("2026-03-02T00:00:00"));
+    const b = dueInstances(monthly, new Date("2026-03-02T00:00:00"));
+    expect(a.map((x) => x.id)).toEqual(b.map((x) => x.id));
+    // The dedupe on ingest is what makes concurrent materialisation safe.
+    expect(dedupeTransactions([...a, ...b]).length).toBe(a.length);
+  });
+
+  it("does not repeat an instance that already exists", () => {
+    const withOne: Group = {
+      ...monthly,
+      transactions: [
+        ...monthly.transactions,
+        t({ id: "rent__2026-02-01", date: "2026-02-01", repeatOf: "rent" }),
+      ],
+    };
+    const due = dueInstances(withOne, new Date("2026-02-20T00:00:00"));
+    expect(due).toEqual([]);
+  });
+
+  it("instances do not themselves recur", () => {
+    const due = dueInstances(monthly, new Date("2026-02-05T00:00:00"));
+    expect(due[0]!.recurrence).toBeUndefined();
+    expect(due[0]!.repeatOf).toBe("rent");
+  });
+
+  it("clamps a month-end date instead of skipping a month", () => {
+    const endOfMonth: Group = {
+      ...monthly,
+      transactions: [t({ id: "rent", date: "2026-01-31", recurrence: "monthly" })],
+    };
+    const due = dueInstances(endOfMonth, new Date("2026-04-05T00:00:00"));
+    // Naive month arithmetic turns 31 Jan into 3 Mar and loses February.
+    expect(due.map((d) => d.date)).toEqual(["2026-02-28", "2026-03-31"]);
+  });
+
+  it("handles weekly and ignores one-off expenses", () => {
+    const weekly: Group = {
+      ...monthly,
+      transactions: [t({ id: "w", date: "2026-01-01", recurrence: "weekly" }), t({ id: "once", date: "2026-01-01" })],
+    };
+    const due = dueInstances(weekly, new Date("2026-01-22T00:00:00"));
+    expect(due.map((d) => d.date)).toEqual(["2026-01-08", "2026-01-15", "2026-01-22"]);
+    expect(due.every((d) => d.repeatOf === "w")).toBe(true);
   });
 });

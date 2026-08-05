@@ -4,6 +4,8 @@ import { useAuthReady, useAuthUser } from "./hooks/useAuth";
 import { useCloudSync } from "./hooks/useCloudSync";
 import { getActiveGroup, setActiveGroup } from "./lib/store";
 import { isPayment } from "./lib/finance";
+import * as repo from "./lib/repo";
+import { toast } from "./lib/toast";
 import type { GroupKind, Transaction, Transfer } from "./types";
 import { TopBar } from "./components/TopBar";
 import { TransactionsPanel } from "./components/TransactionsPanel";
@@ -82,6 +84,14 @@ export function App() {
 
   useScrollLock(drawerOpen || modal.type !== "none");
 
+  // Fill in recurring expenses that came due while the app was closed.
+  useEffect(() => {
+    if (!group) return;
+    void repo.materialiseRecurring(group, user).then((n) => {
+      if (n > 0) toast(`Added ${n} recurring ${n === 1 ? "expense" : "expenses"}`);
+    });
+  }, [group?.id]);
+
   // Hold the whole UI back until Firebase has restored the session — otherwise the
   // signed-out home screen flashes before the user's groups arrive.
   if (!authReady) return <Splash />;
@@ -127,11 +137,12 @@ export function App() {
             onNeedMembers={() => setModal({ type: "settings" })}
           />
         )}
-        {group && tab === "balances" && <BalancesPanel group={group} />}
+        {group && tab === "balances" && <BalancesPanel group={group} user={user} />}
         {group && tab === "settle" && (
           <SettlePanel
             group={group}
             greedy={state.settings.greedyMode}
+            user={user}
             onRecord={(t: Transfer) =>
               setModal({ type: "payment", from: t.from, to: t.to, suggested: t.amount })
             }

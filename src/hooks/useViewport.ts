@@ -13,6 +13,9 @@ import { useEffect } from "react";
  *   --vv-top   how far the visual viewport has been shifted down
  *   --kb       keyboard inset at the bottom (0 when closed)
  */
+/** Below this, a bottom inset is browser chrome rather than a keyboard. */
+const KEYBOARD_MIN = 120;
+
 export function useViewportVars(): void {
   useEffect(() => {
     const root = document.documentElement;
@@ -21,8 +24,11 @@ export function useViewportVars(): void {
     const apply = () => {
       const height = vv?.height ?? window.innerHeight;
       const top = vv?.offsetTop ?? 0;
-      // What the keyboard (or any other on-screen widget) covers at the bottom.
-      const keyboard = Math.max(0, window.innerHeight - height - top);
+      const covered = Math.max(0, window.innerHeight - height - top);
+      // Only a real keyboard counts. On iOS the collapsing URL bar makes
+      // innerHeight and visualViewport.height diverge by ~60-100px while
+      // scrolling, which would otherwise lift the fixed footer as you scroll.
+      const keyboard = covered > KEYBOARD_MIN ? covered : 0;
       root.style.setProperty("--vvh", `${height}px`);
       root.style.setProperty("--vv-top", `${top}px`);
       root.style.setProperty("--kb", `${keyboard}px`);

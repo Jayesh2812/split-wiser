@@ -203,6 +203,20 @@ export async function removeCloudMember(groupId: string, member: Member) {
   await updateDoc(doc(db(), GROUPS, groupId), patch);
 }
 
+/**
+ * Fold one member into another, rewriting every transaction that referenced the
+ * old id. This is the one operation that cannot use arrayUnion/arrayRemove: it
+ * touches most of the array at once, so it writes both arrays wholesale. Callers
+ * pass the already-merged group so the rewrite logic lives in one tested place.
+ */
+export async function mergeCloudMembers(merged: Group) {
+  await updateDoc(doc(db(), GROUPS, merged.id), {
+    members: clean(merged.members),
+    memberUids: clean(merged.memberUids ?? []),
+    transactions: clean(merged.transactions),
+  });
+}
+
 export async function renameCloudMember(groupId: string, prev: Member, next: Member) {
   await updateDoc(doc(db(), GROUPS, groupId), {
     members: arrayRemove(clean(prev)),

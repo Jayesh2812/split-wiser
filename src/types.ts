@@ -21,15 +21,44 @@ export interface Split {
   shares: Record<string, number>;
 }
 
+/** How often an expense repeats. Absent means one-off. */
+export type Recurrence = "weekly" | "monthly";
+
 export interface Transaction {
   id: string;
   description: string;
   category: string; // emoji
+  /** In `currency` if set, otherwise in the group's currency. */
   amount: number;
   date: string; // YYYY-MM-DD
   note: string;
-  paidBy: string; // member id
+  /**
+   * Member who paid. Remains the single source of truth for one-payer expenses;
+   * when `payers` is set this is the largest contributor, kept so that older
+   * clients and existing queries still read something sensible.
+   */
+  paidBy: string;
+  /**
+   * Several people paying for one expense, as member id -> amount in `amount`'s
+   * currency. Absent for the common single-payer case. Must sum to `amount`.
+   */
+  payers?: Record<string, number>;
+  /**
+   * Currency this transaction was actually paid in, when it differs from the
+   * group's. Absent means the group currency.
+   */
+  currency?: string;
+  /** Group-currency units per unit of `currency`. Absent means 1. */
+  rate?: number;
+  /** Set on a template expense that repeats; instances carry `repeatOf`. */
+  recurrence?: Recurrence;
+  /** Id of the recurring template this instance was generated from. */
+  repeatOf?: string;
   createdAt: number;
+  /** Last edit, used to pick a winner when a concurrent edit duplicates a row. */
+  updatedAt?: number;
+  /** uid of whoever last edited it (shared groups only). */
+  updatedByUid?: string | null;
   split: Split;
   /** uid of whoever recorded it (shared groups only) — for attribution. */
   addedByUid?: string | null;
@@ -95,6 +124,10 @@ export interface TxDraft {
   note: string;
   paidBy: string;
   split: Split;
+  payers?: Record<string, number>;
+  currency?: string;
+  rate?: number;
+  recurrence?: Recurrence;
 }
 
 /** Minimal shape of the signed-in Google user we care about. */
