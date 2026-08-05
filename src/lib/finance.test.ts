@@ -3,7 +3,10 @@ import type { Group, Transaction } from "../types";
 import {
   computeBalances,
   groupTotals,
+  isPayment,
+  paymentRecipient,
   settle,
+  settleDirect,
   settleGreedy,
   txShares,
 } from "./finance";
@@ -21,6 +24,8 @@ function tx(partial: Partial<Transaction> & Pick<Transaction, "amount" | "paidBy
     paidBy: partial.paidBy,
     createdAt: partial.createdAt ?? 0,
     split: partial.split,
+    // Mirrors normalizeTx: the key is absent unless this is a payment.
+    ...(partial.kind === "payment" ? { kind: "payment" as const } : {}),
   };
 }
 
@@ -48,6 +53,22 @@ function makeGroup(): Group {
 }
 
 const approx = (a: number, b: number) => Math.abs(a - b) < 0.005;
+
+/** A settlement, shaped exactly as store.buildPayment builds it. */
+function pay(from: string, to: string, amount: number): Transaction {
+  return tx({
+    kind: "payment",
+    description: "Settlement",
+    category: "🤝",
+    amount,
+    paidBy: from,
+    split: { type: "exact", among: [to], shares: { [to]: amount } },
+  });
+}
+
+function withTx(g: Group, ...extra: Transaction[]): Group {
+  return { ...g, transactions: [...g.transactions, ...extra] };
+}
 
 describe("txShares", () => {
   it("splits equally and sums to total (odd cents)", () => {
@@ -133,5 +154,87 @@ describe("settlement", () => {
     const empty: Group = { ...makeGroup(), transactions: [] };
     expect(settle(empty, true)).toEqual([]);
     expect(settle(empty, false)).toEqual([]);
+  });
+});
+
+describe("settlement payments", () => {
+  // Baseline from makeGroup(): Alex +50, Sam -25, Jordan -25.
+
+  it("a full payment zeroes both parties", () => {
+    const g = withTx(makeGroup(), pay(B, A, 25));
+    const bal = computeBalances(g);
+    expect(approx(bal[B]!, 0)).toBe(true);
+    expect(approx(bal[A]!, 25)).toBe(true); // Alex still owed 25 by Jordan
+    expect(approx(bal[C]!, -25)).toBe(true);
+  });
+
+  it("a PARTIAL payment leaves exactly the remainder owing", () => {
+    const g = withTx(makeGroup(), pay(B, A, 10));
+    const bal = computeBalances(g);
+    expect(approx(bal[B]!, -15)).toBe(true); // 25 owed, 10 paid
+    expect(approx(bal[A]!, 40)).toBe(true);
+  });
+
+  it("a partial payment shrinks the plan rather than removing the transfer", () => {
+    const g = withTx(makeGroup(), pay(B, A, 10));
+    const owed = settle(g, true).filter((t) => t.from === B);
+    expect(owed.length).toBe(1);
+    expect(approx(owed[0]!.amount, 15)).toBe(true);
+  });
+
+  it("settleDirect stays correct after a payment (30 owed, 25 paid, 5 left)", () => {
+    // Alex paid 90 for all three, so Sam owes Alex 30 directly.
+    const g: Group = {
+      ...makeGroup(),
+      transactions: [
+        tx({ amount: 90, paidBy: A, split: { type: "equal", among: [A, B, C], shares: {} } }),
+        pay(B, A, 25),
+      ],
+    };
+    const plan = settleDirect(g);
+    const samToAlex = plan.find((t) => t.from === B && t.to === A);
+    expect(samToAlex).toBeTruthy();
+    expect(approx(samToAlex!.amount, 5)).toBe(true);
+  });
+
+  it("recording every suggested transfer empties the plan", () => {
+    const g0 = makeGroup();
+    const payments = settle(g0, true).map((t) => pay(t.from, t.to, t.amount));
+    const g = withTx(g0, ...payments);
+    expect(settle(g, true)).toEqual([]);
+    for (const id of [A, B, C]) expect(approx(computeBalances(g)[id]!, 0)).toBe(true);
+  });
+
+  it("overpaying flips the balance instead of clamping at zero", () => {
+    const g = withTx(makeGroup(), pay(B, A, 40)); // Sam owed only 25
+    const bal = computeBalances(g);
+    expect(approx(bal[B]!, 15)).toBe(true); // Sam is now owed 15
+    expect(approx(bal[A]!, 10)).toBe(true);
+  });
+
+  it("excludes payments from spending totals but not from balances", () => {
+    const g = withTx(makeGroup(), pay(B, A, 25));
+    const totals = groupTotals(g);
+    expect(approx(totals.total, 160)).toBe(true); // unchanged: no new money spent
+    expect(totals.count).toBe(3); // expenses only
+    expect(totals.payments).toBe(1);
+    // ...while the payment still moved the balances.
+    expect(approx(computeBalances(g)[B]!, 0)).toBe(true);
+  });
+
+  it("identifies payments and their recipient", () => {
+    const p = pay(B, A, 25);
+    expect(isPayment(p)).toBe(true);
+    expect(paymentRecipient(p)).toBe(A);
+    const expense = makeGroup().transactions[0]!;
+    expect(isPayment(expense)).toBe(false);
+    expect(paymentRecipient(expense)).toBe(null);
+  });
+
+  it("a payment between two people who owe nothing creates a debt the other way", () => {
+    const g: Group = { ...makeGroup(), transactions: [pay(A, C, 20)] };
+    const bal = computeBalances(g);
+    expect(approx(bal[A]!, 20)).toBe(true);
+    expect(approx(bal[C]!, -20)).toBe(true);
   });
 });

@@ -52,7 +52,7 @@ export function TopBar({ group, user, onMenu, onSettings, onAccount }: TopBarPro
               )}
             </strong>
             <small>
-              {totals ? `${totals.members} members · ${totals.count} transactions` : "No group yet"}
+              {totals ? `${totals.members} members · ${totals.count} expenses` : "No group yet"}
             </small>
           </div>
         </div>

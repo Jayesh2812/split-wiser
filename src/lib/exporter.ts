@@ -1,5 +1,13 @@
 import type { Group } from "../types";
-import { computeBalances, groupTotals, memberName, settle, txShares } from "./finance";
+import {
+  computeBalances,
+  groupTotals,
+  isPayment,
+  memberName,
+  paymentRecipient,
+  settle,
+  txShares,
+} from "./finance";
 import { dateStamp, safeName } from "./format";
 import { exportBackup as storeBackup } from "./store";
 
@@ -38,14 +46,25 @@ export function buildCsv(g: Group, greedy: boolean): string {
   rows.push([]);
 
   rows.push(["TRANSACTIONS"]);
-  rows.push(["Date", "Description", "Category", "Amount", "Paid by", "Split type", "Participants", "Per-person breakdown", "Note"]);
+  rows.push(["Date", "Type", "Description", "Category", "Amount", "Paid by", "Split type", "Participants", "Per-person breakdown", "Note"]);
   for (const t of sortedTx(g)) {
     const shares = txShares(t);
     const breakdown = t.split.among
       .map((id) => `${memberName(g, id)}: ${fmtMoney(cur, (shares[id] ?? 0) / 100)}`)
       .join("; ");
     const participants = t.split.among.map((id) => memberName(g, id)).join("; ");
-    rows.push([t.date, t.description, t.category, fmtMoney(cur, t.amount), memberName(g, t.paidBy), t.split.type, participants, breakdown, t.note]);
+    rows.push([t.date, isPayment(t) ? "Payment" : "Expense", t.description, t.category, fmtMoney(cur, t.amount), memberName(g, t.paidBy), t.split.type, participants, breakdown, t.note]);
+  }
+
+  const payments = sortedTx(g).filter(isPayment);
+  if (payments.length) {
+    rows.push([]);
+    rows.push(["SETTLEMENT PAYMENTS RECORDED"]);
+    rows.push(["Date", "From (paid)", "To (received)", "Amount", "Note"]);
+    for (const t of payments) {
+      const to = paymentRecipient(t);
+      rows.push([t.date, memberName(g, t.paidBy), to ? memberName(g, to) : "—", fmtMoney(cur, t.amount), t.note]);
+    }
   }
 
   rows.push([]);
@@ -59,7 +78,7 @@ export function buildCsv(g: Group, greedy: boolean): string {
   }
 
   rows.push([]);
-  rows.push([`SETTLEMENT (${greedy ? "greedy / minimal payments" : "direct / traceable"})`]);
+  rows.push([`STILL OUTSTANDING (${greedy ? "greedy / minimal payments" : "direct / traceable"})`]);
   rows.push(["From (pays)", "To (receives)", "Amount"]);
   for (const s of settle(g, greedy)) {
     rows.push([memberName(g, s.from), memberName(g, s.to), fmtMoney(cur, s.amount)]);
@@ -83,7 +102,7 @@ export function buildReportHtml(g: Group, greedy: boolean): string {
   let html = "";
 
   html += `<h1>${esc(g.name)}</h1>`;
-  html += `<div class="meta">Splitwiser report · Generated ${esc(new Date().toLocaleString())} · ${totals.members} members · ${totals.count} transactions · Total ${esc(fmtMoney(cur, totals.total))}</div>`;
+  html += `<div class="meta">Splitwiser report · Generated ${esc(new Date().toLocaleString())} · ${totals.members} members · ${totals.count} expenses · Total spent ${esc(fmtMoney(cur, totals.total))}${totals.payments ? ` · ${totals.payments} settlement(s) recorded` : ""}</div>`;
 
   html += "<h2>Transactions</h2>";
   html += '<table><thead><tr><th>Date</th><th>Description</th><th>Paid by</th><th class="num">Amount</th><th>Split among</th></tr></thead><tbody>';
@@ -91,9 +110,21 @@ export function buildReportHtml(g: Group, greedy: boolean): string {
   if (!txs.length) html += '<tr><td colspan="5">No transactions.</td></tr>';
   for (const t of txs) {
     const among = t.split.among.map((id) => memberName(g, id)).join(", ");
-    html += `<tr><td>${esc(t.date)}</td><td>${esc(`${t.category} ${t.description}`)}${t.note ? `<br><small>${esc(t.note)}</small>` : ""}</td><td>${esc(memberName(g, t.paidBy))}</td><td class="num">${esc(fmtMoney(cur, t.amount))}</td><td>${esc(among)}</td></tr>`;
+    const label = isPayment(t) ? `${t.category} ${t.description} (payment)` : `${t.category} ${t.description}`;
+    html += `<tr><td>${esc(t.date)}</td><td>${esc(label)}${t.note ? `<br><small>${esc(t.note)}</small>` : ""}</td><td>${esc(memberName(g, t.paidBy))}</td><td class="num">${esc(fmtMoney(cur, t.amount))}</td><td>${esc(among)}</td></tr>`;
   }
   html += "</tbody></table>";
+
+  const paid = txs.filter(isPayment);
+  if (paid.length) {
+    html += "<h2>Payments recorded</h2>";
+    html += '<table><thead><tr><th>Date</th><th>Paid</th><th>Received</th><th class="num">Amount</th><th>Note</th></tr></thead><tbody>';
+    for (const t of paid) {
+      const to = paymentRecipient(t);
+      html += `<tr><td>${esc(t.date)}</td><td>${esc(memberName(g, t.paidBy))}</td><td>${esc(to ? memberName(g, to) : "—")}</td><td class="num">${esc(fmtMoney(cur, t.amount))}</td><td>${esc(t.note)}</td></tr>`;
+    }
+    html += "</tbody></table>";
+  }
 
   html += "<h2>Balances</h2>";
   html += '<table><thead><tr><th>Member</th><th class="num">Net balance</th><th>Status</th></tr></thead><tbody>';
@@ -105,7 +136,7 @@ export function buildReportHtml(g: Group, greedy: boolean): string {
   }
   html += "</tbody></table>";
 
-  html += `<h2>Settle up — ${greedy ? "greedy (minimal payments)" : "direct (traceable)"}</h2>`;
+  html += `<h2>Still outstanding — ${greedy ? "greedy (minimal payments)" : "direct (traceable)"}</h2>`;
   const plan = settle(g, greedy);
   if (!plan.length) {
     html += "<p>Everyone is settled up.</p>";

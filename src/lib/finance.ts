@@ -16,6 +16,17 @@ export function memberName(g: Group, id: string): string {
 }
 
 /**
+ * A settlement rather than an expense. Anything without the marker is an
+ * expense — see the note on Transaction.kind for why expenses carry no field.
+ */
+export const isPayment = (t: Pick<Transaction, "kind">): boolean => t.kind === "payment";
+
+/** The member a settlement was paid to (payments have exactly one participant). */
+export function paymentRecipient(t: Transaction): string | null {
+  return isPayment(t) ? (t.split.among[0] ?? null) : null;
+}
+
+/**
  * How much each participant owes for a single transaction, in cents.
  * The returned values always sum to the transaction total (payer's share included).
  */
@@ -73,15 +84,28 @@ export function computeBalances(g: Group): Record<string, number> {
 }
 
 export interface GroupTotals {
+  /** Money spent. Settlements move money between members without spending any. */
   total: number;
+  /** Expense count, excluding settlements. */
   count: number;
+  /** Settlements recorded. */
+  payments: number;
   members: number;
 }
 
 export function groupTotals(g: Group): GroupTotals {
   let total = 0;
-  for (const t of g.transactions) total += toCents(t.amount);
-  return { total: fromCents(total), count: g.transactions.length, members: g.members.length };
+  let count = 0;
+  let payments = 0;
+  for (const t of g.transactions) {
+    if (isPayment(t)) {
+      payments++;
+      continue;
+    }
+    total += toCents(t.amount);
+    count++;
+  }
+  return { total: fromCents(total), count, payments, members: g.members.length };
 }
 
 /**

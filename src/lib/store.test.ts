@@ -3,6 +3,9 @@ import type { Group } from "../types";
 import {
   addMember,
   addTransaction,
+  buildPayment,
+  normalizeTx,
+  recordPayment,
   clearSharedGroups,
   createGroup,
   exportBackup,
@@ -156,5 +159,62 @@ describe("local vs shared groups", () => {
     };
     importBackup(JSON.stringify(legacy));
     expect(getState().groups[0]!.kind).toBe("local");
+  });
+});
+
+describe("settlement payments in the store", () => {
+  /** Two members, returns their ids. */
+  function pair(): { g: Group; alex: string; sam: string } {
+    const g = createGroup("Trip", "$");
+    addMember(g.id, "Alex");
+    addMember(g.id, "Sam");
+    const [alex, sam] = getActiveGroup()!.members.map((m) => m.id) as [string, string];
+    return { g: getActiveGroup()!, alex, sam };
+  }
+
+  /**
+   * Guards a subtle data-loss bug: cloud.ts deletes transactions with
+   * arrayRemove(clean(tx)), which needs an EXACT match against the stored map.
+   * If an expense ever gained a `kind` key, locally-held objects would stop
+   * matching documents written before the field existed — arrayRemove would
+   * no-op and updateCloudTransaction would then add a duplicate.
+   */
+  it("never writes a `kind` key on an expense", () => {
+    const t = normalizeTx({
+      description: "Dinner", category: "🍔", amount: 20, date: "2026-01-01", note: "",
+      paidBy: "m1", split: { type: "equal", among: ["m1"], shares: {} },
+    });
+    expect("kind" in t).toBe(false);
+    expect(Object.keys(JSON.parse(JSON.stringify(t)))).not.toContain("kind");
+  });
+
+  it("builds a payment as an exact split naming only the recipient", () => {
+    const t = buildPayment({ from: "a", to: "b", amount: 25, date: "2026-01-02", note: "upi" });
+    expect(t.kind).toBe("payment");
+    expect(t.paidBy).toBe("a");
+    expect(t.split.type).toBe("exact");
+    expect(t.split.among).toEqual(["b"]);
+    expect(t.split.shares["b"]).toBe(25);
+    expect(t.amount).toBe(25);
+  });
+
+  it("records a payment onto the group", () => {
+    const { g, alex, sam } = pair();
+    recordPayment(g.id, { from: sam, to: alex, amount: 12.5, date: "2026-01-02", note: "" });
+    const txs = getActiveGroup()!.transactions;
+    expect(txs.length).toBe(1);
+    expect(txs[0]!.kind).toBe("payment");
+    expect(txs[0]!.amount).toBe(12.5);
+  });
+
+  it("rounds a payment amount to cents", () => {
+    const t = buildPayment({ from: "a", to: "b", amount: 10.005, date: "2026-01-02", note: "" });
+    expect(t.amount).toBe(10.01);
+  });
+
+  it("returns null for an unknown group", () => {
+    expect(
+      recordPayment("nope", { from: "a", to: "b", amount: 5, date: "2026-01-02", note: "" }),
+    ).toBe(null);
   });
 });

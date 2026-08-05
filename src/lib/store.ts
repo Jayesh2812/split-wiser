@@ -1,8 +1,11 @@
-import type { AppState, Group, Member, Transaction, TxDraft } from "../types";
+import type { AppState, Group, Member, PaymentDraft, Transaction, TxDraft } from "../types";
 import { round2, uid } from "./finance";
 
 const STORAGE_KEY = "splitwiser.state.v1";
 const SCHEMA = 1;
+
+/** Emoji standing in for a settlement in the transaction list. */
+export const PAYMENT_CATEGORY = "🤝";
 
 function defaultState(): AppState {
   return { schema: SCHEMA, activeGroupId: null, settings: { greedyMode: false }, groups: [] };
@@ -92,7 +95,37 @@ export function normalizeTx(draft: TxDraft & Partial<Transaction>): Transaction 
       among: draft.split?.among ? [...draft.split.among] : [],
       shares: draft.split?.shares ? { ...draft.split.shares } : {},
     },
+    // Spread, never assign: an expense must come out with NO `kind` key at all,
+    // or cloud.ts's arrayRemove() stops matching documents written before this
+    // field existed — edits would silently duplicate instead of replacing.
+    ...(draft.kind === "payment" ? { kind: "payment" as const } : {}),
   };
+}
+
+/**
+ * A settlement expressed in the ordinary transaction model: the payer covers an
+ * exact split consisting only of the recipient. computeBalances then credits the
+ * payer and debits the recipient by the same amount, cancelling the debt — so
+ * partial payments need no special handling, they just cancel less of it.
+ */
+export function buildPayment(p: PaymentDraft): Transaction {
+  return normalizeTx({
+    kind: "payment",
+    description: "Settlement",
+    category: PAYMENT_CATEGORY,
+    amount: p.amount,
+    date: p.date,
+    note: p.note,
+    paidBy: p.from,
+    split: { type: "exact", among: [p.to], shares: { [p.to]: round2(p.amount) } },
+  });
+}
+
+export function recordPayment(groupId: string, p: PaymentDraft): Transaction | null {
+  if (!getGroup(groupId)) return null;
+  const t = buildPayment(p);
+  withGroup(groupId, (grp) => ({ ...grp, transactions: [...grp.transactions, t] }));
+  return t;
 }
 
 function withGroup(groupId: string, fn: (g: Group) => Group) {

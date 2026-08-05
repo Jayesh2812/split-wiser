@@ -159,6 +159,63 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.getByText(/1 members/)).toBeTruthy();
   });
 
+  it("records a partial payment, then the remainder, from the Settle Up tab", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+    await addExpense("Dinner", "100");
+
+    // Alex paid 100 split two ways, so Sam owes 50.
+    fireEvent.click(screen.getByRole("tab", { name: "Settle Up" }));
+    let item = document.querySelector(".settle-item") as HTMLElement;
+    expect(within(item).getByText("₹50.00")).toBeTruthy();
+
+    // Part-pay 20 of the 50.
+    fireEvent.click(within(item).getByRole("button", { name: /Record payment from Sam/ }));
+    const amount = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    expect(amount.value).toBe("50"); // prefilled with the full suggestion
+    fireEvent.change(amount, { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+    await waitFor(() => expect(screen.queryByText("Record a payment")).toBeNull());
+
+    // The transfer shrinks rather than disappearing.
+    item = document.querySelector(".settle-item") as HTMLElement;
+    expect(within(item).getByText("₹30.00")).toBeTruthy();
+
+    // Settle the rest.
+    fireEvent.click(within(item).getByRole("button", { name: /Record payment from Sam/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+    await waitFor(() => expect(screen.getByText("Everyone is settled up.")).toBeTruthy());
+  });
+
+  it("keeps settlements out of spending totals and off the expense form", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+    await addExpense("Dinner", "100");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Settle Up" }));
+    const item = document.querySelector(".settle-item") as HTMLElement;
+    fireEvent.click(within(item).getByRole("button", { name: /Record payment from Sam/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+    await waitFor(() => expect(screen.getByText("Everyone is settled up.")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Transactions" }));
+    // Total spent is unchanged — a settlement moves money, it does not spend any.
+    const summary = document.querySelector(".tx-summary") as HTMLElement;
+    expect(within(summary).getByText("₹100.00")).toBeTruthy();
+    expect(within(summary).getByText(/Expenses/)).toBeTruthy();
+    expect(within(summary).getByText("1")).toBeTruthy(); // one expense, not two
+
+    // The payment is in history, and reopens as a settlement — not the expense form.
+    const row = [...document.querySelectorAll<HTMLElement>(".tx-item")].find((el) =>
+      el.textContent?.includes("Settlement"),
+    );
+    expect(row).toBeTruthy();
+    expect(row!.textContent).toContain("Sam paid Alex");
+    fireEvent.click(row!);
+    expect(screen.getByText("Delete payment")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("e.g. Dinner, Cab, Groceries")).toBeNull();
+  });
+
   it("toggles greedy settlement mode", () => {
     render(<App />);
     createSoloGroup("", "Alex\nSam");

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { AppState, AuthUser } from "../types";
 import { groupTotals } from "../lib/finance";
 import { isCloudConfigured } from "../lib/firebase";
+import { useSwipeDismiss } from "../hooks/useSwipeDismiss";
 import { Icon } from "./Icon";
 
 interface Props {
@@ -24,6 +25,8 @@ export function GroupDrawer({
   onPick,
 }: Props) {
   const cloudOn = isCloudConfigured();
+  // The drawer slides in from the left, so a leftward swipe closes it.
+  const swipe = useSwipeDismiss({ axis: "x", onClose });
 
   // Match the modals: Escape closes the drawer too.
   useEffect(() => {
@@ -36,7 +39,11 @@ export function GroupDrawer({
 
   return (
     <div className="drawer" role="dialog" aria-label="Groups">
-      <div className="drawer-panel">
+      <div
+        className={`drawer-panel${swipe.dragging ? " dragging" : ""}`}
+        style={swipe.transform ? { transform: swipe.transform } : undefined}
+        {...swipe.handlers}
+      >
         <div className="drawer-header">
           <h3>Groups</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close">

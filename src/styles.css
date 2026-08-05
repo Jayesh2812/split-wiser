@@ -222,6 +222,7 @@ body {
   background: var(--bg-elev); border-right: 1px solid var(--line);
   padding: calc(16px + var(--safe-top)) 16px 16px; display: flex; flex-direction: column; gap: 12px;
   animation: slidein .2s ease; z-index: 1;
+  touch-action: pan-y;
 }
 @keyframes slidein { from { transform: translateX(-100%); } to { transform: none; } }
 .drawer-header { display: flex; align-items: center; justify-content: space-between; }
@@ -247,6 +248,7 @@ body {
   background: var(--bg-elev); border: 1px solid var(--line);
   border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + var(--safe-bottom));
   animation: slideup .22s ease;
+  touch-action: pan-x;
 }
 @keyframes slideup { from { transform: translateY(20px); opacity: .6; } to { transform: none; opacity: 1; } }
 
@@ -473,3 +475,34 @@ body {
 }
 .join-confirm b { font-size: 18px; word-break: break-word; }
 .join-confirm small { color: var(--text-faint); font-size: 12px; letter-spacing: .04em; }
+
+/* Settlements */
+.btn-record { flex: none; padding: 8px 12px; font-size: 13px; }
+.settle-item .settle-amt { margin-left: auto; }
+/* A recorded settlement is history, not spending — read it back a shade quieter. */
+.tx-payment { border-style: dashed; }
+.tx-payment .tx-emoji { background: transparent; border: 1px dashed var(--line-strong); }
+
+.pay-flow {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 14px 12px; margin-bottom: 14px;
+  background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--radius);
+  color: var(--text-faint);
+}
+.pay-who {
+  color: var(--text); font-weight: 600; max-width: 38%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pay-amount-static {
+  text-align: center; font-size: 30px; font-weight: 700; padding: 4px 0 2px;
+}
+
+/* Drag-to-dismiss: while a finger is down the panel follows it, so the entry
+   keyframes must not fight the inline transform. Releasing short of the
+   threshold drops .dragging and the transition springs it back. */
+.drawer-panel.dragging, .modal.dragging { animation: none; transition: none; }
+.drawer-panel, .modal { transition: transform .18s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel, .modal { transition: none; animation: none; }
+}

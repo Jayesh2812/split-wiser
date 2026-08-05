@@ -1,4 +1,4 @@
-import type { Group } from "../types";
+import type { Group, Transfer } from "../types";
 import { memberName, settle } from "../lib/finance";
 import { colorFor, initials, money } from "../lib/format";
 import { setGreedyMode } from "../lib/store";
@@ -8,9 +8,10 @@ import { Icon } from "./Icon";
 interface Props {
   group: Group;
   greedy: boolean;
+  onRecord: (transfer: Transfer) => void;
 }
 
-export function SettlePanel({ group, greedy }: Props) {
+export function SettlePanel({ group, greedy, onRecord }: Props) {
   const cur = group.currency;
   const plan = settle(group, greedy);
 
@@ -44,23 +45,36 @@ export function SettlePanel({ group, greedy }: Props) {
       {plan.length === 0 ? (
         <div className="hint">Everyone is settled up.</div>
       ) : (
-        <ul className="settle-list">
-          {plan.map((s, i) => (
-            <li className="settle-item" key={i}>
-              <div className="avatar" style={{ background: colorFor(s.from) }}>
-                {initials(memberName(group, s.from))}
-              </div>
-              <div className="flow">
-                <span className="chip">{memberName(group, s.from)}</span>
-                <span className="arrow">
-                  <Icon name="arrow-right" size={16} />
-                </span>
-                <span className="chip">{memberName(group, s.to)}</span>
-              </div>
-              <div className="settle-amt">{money(cur, s.amount)}</div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="settle-list">
+            {plan.map((s, i) => (
+              <li className="settle-item" key={`${s.from}-${s.to}-${i}`}>
+                <div className="avatar" style={{ background: colorFor(s.from) }}>
+                  {initials(memberName(group, s.from))}
+                </div>
+                <div className="flow">
+                  <span className="chip">{memberName(group, s.from)}</span>
+                  <span className="arrow">
+                    <Icon name="arrow-right" size={16} />
+                  </span>
+                  <span className="chip">{memberName(group, s.to)}</span>
+                </div>
+                <div className="settle-amt">{money(cur, s.amount)}</div>
+                <button
+                  className="btn btn-ghost btn-record"
+                  onClick={() => onRecord(s)}
+                  aria-label={`Record payment from ${memberName(group, s.from)} to ${memberName(group, s.to)}`}
+                >
+                  Record
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="settle-hint">
+            Recording a payment logs it in the group's history and updates these balances. Part
+            payments are fine — enter any amount and the remainder stays outstanding.
+          </p>
+        </>
       )}
     </section>
   );

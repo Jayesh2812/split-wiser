@@ -8,7 +8,7 @@
  * cache fires the snapshot immediately, so the UI updates instantly even
  * offline, and the write flushes when connectivity returns.
  */
-import type { AuthUser, Group, Member, TxDraft } from "../types";
+import type { AuthUser, Group, Member, PaymentDraft, TxDraft } from "../types";
 import * as store from "./store";
 import * as cloud from "./cloud";
 import { uid } from "./finance";
@@ -135,6 +135,24 @@ export async function updateTransaction(
     await cloud.updateCloudTransaction(group.id, prev, next);
   } else {
     store.updateTransaction(group.id, txId, draft);
+  }
+}
+
+/**
+ * Record a settlement. It is stored as an ordinary transaction, so it flows
+ * through the same sync, export and edit paths as an expense — and the balance
+ * maths needs no change at all.
+ */
+export async function recordPayment(
+  group: Group,
+  payment: PaymentDraft,
+  user: AuthUser | null,
+): Promise<void> {
+  if (isShared(group)) {
+    const tx = store.buildPayment(payment);
+    await cloud.addCloudTransaction(group.id, { ...tx, addedByUid: user?.uid ?? null });
+  } else {
+    store.recordPayment(group.id, payment);
   }
 }
 

@@ -33,6 +33,12 @@ export interface Transaction {
   split: Split;
   /** uid of whoever recorded it (shared groups only) — for attribution. */
   addedByUid?: string | null;
+  /**
+   * "payment" marks a settlement — one member repaying another. Deliberately
+   * ABSENT for expenses: cloud.ts removes transactions with arrayRemove(), which
+   * needs an exact match against documents written before this field existed.
+   */
+  kind?: "payment";
 }
 
 export interface Group {
@@ -69,6 +75,15 @@ export interface Transfer {
   from: string; // member id (payer)
   to: string; // member id (receiver)
   amount: number;
+}
+
+/** A settlement being recorded: one member repaying another. */
+export interface PaymentDraft {
+  from: string; // member id paying
+  to: string; // member id receiving
+  amount: number;
+  date: string;
+  note: string;
 }
 
 /** Draft used by the add/edit transaction form. */
