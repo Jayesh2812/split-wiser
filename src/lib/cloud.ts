@@ -110,6 +110,30 @@ export type JoinResult =
   | { ok: true; groupId: string; alreadyMember: boolean }
   | { ok: false; reason: "not-found" | "failed" };
 
+export type InvitePreview =
+  | { ok: true; code: string; groupId: string; groupName: string }
+  | { ok: false; reason: "not-found" | "failed" };
+
+/**
+ * Resolve a code to its group *without* joining, so the UI can name the group
+ * before the user commits. Non-members cannot read the group doc, which is why
+ * the invite doc carries a copy of the name.
+ */
+export async function lookupInviteCode(code: string): Promise<InvitePreview> {
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return { ok: false, reason: "not-found" };
+  try {
+    const snap = await getDoc(doc(db(), INVITES, normalized));
+    if (!snap.exists()) return { ok: false, reason: "not-found" };
+    const { groupId, groupName } = snap.data() as { groupId: string; groupName?: string };
+    if (!groupId) return { ok: false, reason: "not-found" };
+    return { ok: true, code: normalized, groupId, groupName: groupName || "this group" };
+  } catch (e) {
+    console.error("lookupInviteCode failed", e);
+    return { ok: false, reason: "failed" };
+  }
+}
+
 /**
  * Resolve an invite code and add the user as a real member.
  * The invitee becomes a member slot carrying their own uid.
@@ -150,8 +174,15 @@ export async function joinByInviteCode(code: string, user: AuthUser): Promise<Jo
 export async function updateGroupMeta(
   groupId: string,
   patch: Partial<Pick<Group, "name" | "currency">>,
+  inviteCode?: string | null,
 ) {
   await updateDoc(doc(db(), GROUPS, groupId), clean(patch));
+  // Mirror a rename onto the invite doc so join prompts name the group correctly.
+  // Only the invite's creator may write it, so a rename by a non-owner member
+  // leaves the cached name behind — harmless, hence the swallowed failure.
+  if (patch.name && inviteCode) {
+    await updateDoc(doc(db(), INVITES, inviteCode), { groupName: patch.name }).catch(() => {});
+  }
 }
 
 export async function deleteSharedGroup(group: Group) {

@@ -437,3 +437,20 @@ body {
      3px  3px 9px -4px rgba(251, 188, 5, 0.85),
     -3px  3px 9px -4px rgba(52, 168, 83, 0.85);
 }
+
+/* Invite sharing */
+.invite-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.invite-actions .btn { flex: 1; justify-content: center; min-width: 116px; }
+
+/* Join confirmation — names the group before the user commits */
+.join-confirm {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  text-align: center; padding: 18px 12px; margin-bottom: 4px;
+  background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.join-confirm-mark {
+  width: 52px; height: 52px; display: grid; place-items: center; margin-bottom: 6px;
+  border: 1px solid var(--line-strong); border-radius: 16px; color: var(--text);
+}
+.join-confirm b { font-size: 18px; word-break: break-word; }
+.join-confirm small { color: var(--text-faint); font-size: 12px; letter-spacing: .04em; }

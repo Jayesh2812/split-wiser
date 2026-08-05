@@ -19,7 +19,9 @@ export type IconName =
   | "arrow-right"
   | "google"
   | "wallet"
-  | "party";
+  | "party"
+  | "copy"
+  | "share";
 
 const PATHS: Record<IconName, JSX.Element> = {
   menu: (
@@ -128,6 +130,21 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M15 4.5l1-1.5" />
       <path d="M19 8l1.8-.6" />
       <path d="M18.5 3.5l-1 1.8" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H5a2 2 0 0 0-2 2v7.5A2.5 2.5 0 0 0 5.5 15" />
+    </>
+  ),
+  share: (
+    <>
+      <circle cx="18" cy="5" r="2.6" />
+      <circle cx="6" cy="12" r="2.6" />
+      <circle cx="18" cy="19" r="2.6" />
+      <path d="M8.3 10.8l7.4-4.3" />
+      <path d="M8.3 13.2l7.4 4.3" />
     </>
   ),
 };

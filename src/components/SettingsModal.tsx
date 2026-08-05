@@ -5,6 +5,7 @@ import * as repo from "../lib/repo";
 import { importBackup } from "../lib/store";
 import { exportBackupFile } from "../lib/exporter";
 import { toast } from "../lib/toast";
+import { copyText, inviteLink } from "../lib/invite";
 import { Icon } from "./Icon";
 
 interface Props {
@@ -23,6 +24,7 @@ export function SettingsModal({ group, user, onClose }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const shared = group.kind === "shared";
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   const isOwner = !shared || group.ownerUid === user?.uid;
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -59,11 +61,29 @@ export function SettingsModal({ group, user, onClose }: Props) {
 
   const copyCode = async () => {
     if (!group.inviteCode) return;
+    const ok = await copyText(group.inviteCode);
+    toast(ok ? "Invite code copied" : `Invite code: ${group.inviteCode}`);
+  };
+
+  const copyLink = async () => {
+    if (!group.inviteCode) return;
+    const link = inviteLink(group.inviteCode);
+    const ok = await copyText(link);
+    toast(ok ? "Invite link copied" : link);
+  };
+
+  /** Native share sheet where available — the natural way to send a link on mobile. */
+  const shareLink = async () => {
+    if (!group.inviteCode) return;
+    const link = inviteLink(group.inviteCode);
     try {
-      await navigator.clipboard.writeText(group.inviteCode);
-      toast("Invite code copied");
+      await navigator.share({
+        title: group.name,
+        text: `Join "${group.name}" on Splitwiser`,
+        url: link,
+      });
     } catch {
-      toast(`Invite code: ${group.inviteCode}`);
+      /* dismissed, or sharing unavailable — the copy buttons remain */
     }
   };
 
@@ -140,15 +160,26 @@ export function SettingsModal({ group, user, onClose }: Props) {
 
       {shared && group.inviteCode && (
         <div className="field">
-          <label>Invite code</label>
+          <label>Invite others</label>
           <div className="invite-row">
             <code className="invite-code">{group.inviteCode}</code>
+          </div>
+          <div className="invite-actions">
             <button className="btn btn-ghost" onClick={copyCode}>
-              Copy
+              <Icon name="copy" /> Copy code
             </button>
+            <button className="btn btn-ghost" onClick={copyLink}>
+              <Icon name="link" /> Copy link
+            </button>
+            {canShare && (
+              <button className="btn btn-ghost" onClick={shareLink}>
+                <Icon name="share" /> Share
+              </button>
+            )}
           </div>
           <small style={{ color: "var(--text-faint)" }}>
-            Share this code. Anyone who signs in with Google and enters it joins as a member.
+            Either works: the code is typed in by hand, the link opens the app and asks them to
+            confirm. Anyone who signs in with Google can join as a member.
           </small>
         </div>
       )}

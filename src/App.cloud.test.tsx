@@ -71,6 +71,10 @@ vi.mock("./lib/cloud", () => ({
       snapshotCb = null;
     };
   }),
+  lookupInviteCode: vi.fn(async (code: string) => {
+    if (code !== "XY7K2M") return { ok: false as const, reason: "not-found" as const };
+    return { ok: true as const, code, groupId: "cloud1", groupName: "Goa Trip" };
+  }),
   joinByInviteCode: vi.fn(async (code: string) => {
     if (code !== "XY7K2M") return { ok: false as const, reason: "not-found" as const };
     return { ok: true as const, groupId: "cloud1", alreadyMember: false };
@@ -99,7 +103,10 @@ beforeEach(() => {
   signedIn = USER;
   vi.clearAllMocks();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState({}, "", "/");
+});
 
 describe("App — cloud mode (shared groups)", () => {
   it("enables the shared option and shows the account button", () => {
@@ -150,17 +157,63 @@ describe("App — cloud mode (shared groups)", () => {
     expect(tx.addedByUid).toBe("u1"); // attributed to the signed-in user
   });
 
-  it("joins an existing group with an invite code", async () => {
+  it("names the group and asks for confirmation before joining by code", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Groups" }));
     fireEvent.click(screen.getByText("Join with code"));
 
     fireEvent.change(screen.getByPlaceholderText("ABC123"), { target: { value: "xy7k2m" } });
-    fireEvent.click(screen.getByRole("button", { name: "Join group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
-    await waitFor(() => expect(cloud.joinByInviteCode).toHaveBeenCalledOnce());
+    // Confirmation step names the group; nothing has been joined yet.
+    await waitFor(() => expect(screen.getByText("Join this group?")).toBeTruthy());
+    expect(screen.getByText("Goa Trip")).toBeTruthy();
+    expect(cloud.joinByInviteCode).not.toHaveBeenCalled();
     // Code is normalised to upper case before lookup.
+    expect(vi.mocked(cloud.lookupInviteCode).mock.calls[0]![0]).toBe("XY7K2M");
+
+    fireEvent.click(screen.getByRole("button", { name: "Join group" }));
+    await waitFor(() => expect(cloud.joinByInviteCode).toHaveBeenCalledOnce());
     expect(vi.mocked(cloud.joinByInviteCode).mock.calls[0]![0]).toBe("XY7K2M");
+  });
+
+  it("backs out of the confirmation without joining", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Groups" }));
+    fireEvent.click(screen.getByText("Join with code"));
+    fireEvent.change(screen.getByPlaceholderText("ABC123"), { target: { value: "XY7K2M" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(screen.getByText("Join this group?")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(screen.getByPlaceholderText("ABC123")).toBeTruthy();
+    expect(cloud.joinByInviteCode).not.toHaveBeenCalled();
+  });
+
+  it("opens an invite link straight into the confirmation, then clears the URL", async () => {
+    window.history.replaceState({}, "", "/?join=xy7k2m");
+    render(<App />);
+
+    // No code entry — the link resolves itself and names the group.
+    await waitFor(() => expect(screen.getByText("Join this group?")).toBeTruthy());
+    expect(screen.getByText("Goa Trip")).toBeTruthy();
+    expect(vi.mocked(cloud.lookupInviteCode).mock.calls[0]![0]).toBe("XY7K2M");
+    expect(cloud.joinByInviteCode).not.toHaveBeenCalled();
+
+    // The param is dropped so a refresh doesn't re-prompt.
+    expect(window.location.search).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Join group" }));
+    await waitFor(() => expect(cloud.joinByInviteCode).toHaveBeenCalledOnce());
+  });
+
+  it("asks an invite-link visitor to sign in first", async () => {
+    signedIn = null;
+    window.history.replaceState({}, "", "/?join=XY7K2M");
+    render(<App />);
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeTruthy();
+    expect(cloud.lookupInviteCode).not.toHaveBeenCalled();
   });
 
   it("reports an unknown invite code", async () => {
@@ -168,8 +221,9 @@ describe("App — cloud mode (shared groups)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Groups" }));
     fireEvent.click(screen.getByText("Join with code"));
     fireEvent.change(screen.getByPlaceholderText("ABC123"), { target: { value: "NOPE12" } });
-    fireEvent.click(screen.getByRole("button", { name: "Join group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     await waitFor(() => expect(screen.getByText("No group found for that code.")).toBeTruthy());
+    expect(cloud.joinByInviteCode).not.toHaveBeenCalled();
   });
 
   it("asks an anonymous visitor to sign in before joining", async () => {
@@ -177,10 +231,10 @@ describe("App — cloud mode (shared groups)", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Groups" }));
     fireEvent.click(screen.getByText("Join with code"));
+    // Sign-in is the only path forward — no code entry, no join button.
     expect(screen.getByRole("button", { name: "Continue with Google" })).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Join group" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(screen.queryByPlaceholderText("ABC123")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Join group" })).toBeNull();
   });
 
   it("keeps solo groups working while signed in", () => {

@@ -19,13 +19,14 @@ import { TransactionModal } from "./components/TransactionModal";
 import { EmptyState } from "./components/EmptyState";
 import { Toast } from "./components/Toast";
 import { Splash } from "./components/Splash";
+import { clearInviteFromUrl, readInviteFromUrl } from "./lib/invite";
 
 export type TabKey = "transactions" | "balances" | "settle";
 type ModalState =
   | { type: "none" }
   | { type: "chooseKind" }
   | { type: "group"; kind: GroupKind }
-  | { type: "join" }
+  | { type: "join"; code?: string }
   | { type: "account" }
   | { type: "settings" }
   | { type: "tx"; tx: Transaction | null };
@@ -46,6 +47,15 @@ export function App() {
   const [tab, setTab] = useState<TabKey>("transactions");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
+
+  // An invite link (?join=CODE) opens the join sheet once, then the param is
+  // dropped so a refresh doesn't re-prompt for a group already dealt with.
+  useEffect(() => {
+    const code = readInviteFromUrl();
+    if (!code) return;
+    clearInviteFromUrl();
+    setModal({ type: "join", code });
+  }, []);
 
   // Adopt the first group if none is active (e.g. after restore or sign-out).
   useEffect(() => {
@@ -150,6 +160,7 @@ export function App() {
       )}
       {modal.type === "join" && (
         <JoinGroupModal
+          initialCode={modal.code}
           onClose={closeModal}
           onJoined={() => {
             setTab("transactions");

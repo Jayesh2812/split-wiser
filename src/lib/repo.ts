@@ -41,13 +41,18 @@ export async function joinGroupByCode(code: string, user: AuthUser) {
   return cloud.joinByInviteCode(code, user);
 }
 
+/** Name the group behind an invite code without joining it. */
+export async function lookupInviteCode(code: string) {
+  return cloud.lookupInviteCode(code);
+}
+
 /* ---------- group ---------- */
 
 export async function updateGroup(
   group: Group,
   patch: Partial<Pick<Group, "name" | "currency">>,
 ): Promise<void> {
-  if (isShared(group)) await cloud.updateGroupMeta(group.id, patch);
+  if (isShared(group)) await cloud.updateGroupMeta(group.id, patch, group.inviteCode);
   else store.updateGroup(group.id, patch);
 }
 
