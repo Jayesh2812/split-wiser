@@ -19,9 +19,17 @@
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Visual-viewport metrics, kept current by useViewportVars(). The fallbacks
+     apply before the first measurement and if the API is missing. */
+  --vvh: 100vh;
+  --vv-top: 0px;
+  --kb: 0px;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* iOS zooms the whole page when focusing a control smaller than 16px, and that
+   zoom reads as the screen jumping. 16px is the floor for every control. */
+input, select, textarea { font-size: 16px; }
 html, body { margin: 0; height: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -37,6 +45,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   max-width: 720px;
   margin: 0 auto;
 }
@@ -98,7 +107,7 @@ body {
 .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
 .search {
   flex: 1; background: var(--bg-input); border: 1px solid var(--line);
-  color: var(--text); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 14px;
+  color: var(--text); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 16px;
 }
 .search::placeholder { color: var(--text-faint); }
 
@@ -191,7 +200,7 @@ body {
 
 /* Export bar */
 .exportbar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  position: fixed; bottom: var(--kb); left: 0; right: 0; z-index: 20;
   display: flex; gap: 8px; justify-content: center;
   padding: 10px 14px calc(10px + var(--safe-bottom));
   background: linear-gradient(0deg, var(--bg-elev), rgba(18,18,18,0.85));
@@ -202,7 +211,11 @@ body {
 .exportbar .btn { flex: 1; justify-content: center; }
 
 /* Drawer */
-.drawer { position: fixed; inset: 0; z-index: 40; }
+.drawer {
+  position: fixed; left: 0; right: 0;
+  top: var(--vv-top); height: var(--vvh);
+  z-index: 40;
+}
 .drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
 .drawer-panel {
   position: absolute; top: 0; left: 0; bottom: 0; width: min(84vw, 340px);
@@ -221,10 +234,16 @@ body {
 .group-item .g-main small { color: var(--text-faint); }
 
 /* Modal */
-.modal-host { position: fixed; inset: 0; z-index: 50; display: grid; place-items: end center; }
+.modal-host {
+  position: fixed; left: 0; right: 0;
+  top: var(--vv-top); height: var(--vvh);
+  z-index: 50; display: grid; place-items: end center;
+}
 .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.55); }
 .modal {
-  position: relative; width: 100%; max-width: 720px; max-height: 92vh; overflow: auto;
+  position: relative; width: 100%; max-width: 720px; overflow: auto;
+  max-height: calc(var(--vvh) - 24px);
+  overscroll-behavior: contain;
   background: var(--bg-elev); border: 1px solid var(--line);
   border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + var(--safe-bottom));
   animation: slideup .22s ease;
@@ -239,7 +258,7 @@ body {
 .field label { display: block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 6px; font-weight: 600; }
 .field input[type=text], .field input[type=number], .field input[type=date], .field select, .field textarea {
   width: 100%; background: var(--bg-input); border: 1px solid var(--line); color: var(--text);
-  border-radius: var(--radius-sm); padding: 11px 12px; font-size: 15px; font-family: inherit;
+  border-radius: var(--radius-sm); padding: 11px 12px; font-size: 16px; font-family: inherit;
 }
 .field textarea { resize: vertical; min-height: 60px; }
 .field .row { display: flex; gap: 8px; }
@@ -332,7 +351,7 @@ body {
 
 /* Toast */
 .toast {
-  position: fixed; bottom: calc(76px + var(--safe-bottom)); left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: calc(76px + var(--safe-bottom) + var(--kb)); left: 50%; transform: translateX(-50%);
   background: var(--bg-card); border: 1px solid var(--line); color: var(--text);
   padding: 10px 16px; border-radius: 24px; box-shadow: var(--shadow); z-index: 60; font-size: 13.5px;
   animation: fade .2s ease;
@@ -389,7 +408,7 @@ body {
 
 /* Splash (auth still resolving) */
 .splash {
-  min-height: 100vh; display: flex; flex-direction: column;
+  min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 16px;
   background: var(--bg); color: var(--text);
 }

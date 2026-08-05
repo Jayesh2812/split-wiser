@@ -20,6 +20,7 @@ import { EmptyState } from "./components/EmptyState";
 import { Toast } from "./components/Toast";
 import { Splash } from "./components/Splash";
 import { clearInviteFromUrl, readInviteFromUrl } from "./lib/invite";
+import { useScrollLock, useViewportVars } from "./hooks/useViewport";
 
 export type TabKey = "transactions" | "balances" | "settle";
 type ModalState =
@@ -42,6 +43,7 @@ export function App() {
   const user = useAuthUser();
   const authReady = useAuthReady();
   useCloudSync(user);
+  useViewportVars();
 
   const group = getActiveGroup();
   const [tab, setTab] = useState<TabKey>("transactions");
@@ -63,6 +65,8 @@ export function App() {
   }, [state.activeGroupId, state.groups]);
 
   const closeModal = () => setModal({ type: "none" });
+
+  useScrollLock(drawerOpen || modal.type !== "none");
 
   // Hold the whole UI back until Firebase has restored the session — otherwise the
   // signed-out home screen flashes before the user's groups arrive.
