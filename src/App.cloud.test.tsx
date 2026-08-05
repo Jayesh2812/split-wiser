@@ -129,7 +129,7 @@ describe("App — cloud mode (shared groups)", () => {
     expect(screen.getByText(/Shared group/, { selector: "b" })).toBeTruthy();
     expect(screen.getByText("XY7K2M")).toBeTruthy();
     // Cloud groups are not part of local JSON backups.
-    expect(screen.queryByText("💾 Backup JSON")).toBeNull();
+    expect(screen.queryByText("Backup JSON")).toBeNull();
   });
 
   it("routes expense writes in a shared group to Firestore", async () => {
@@ -153,7 +153,7 @@ describe("App — cloud mode (shared groups)", () => {
   it("joins an existing group with an invite code", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Groups" }));
-    fireEvent.click(screen.getByText("🔗 Join with code"));
+    fireEvent.click(screen.getByText("Join with code"));
 
     fireEvent.change(screen.getByPlaceholderText("ABC123"), { target: { value: "xy7k2m" } });
     fireEvent.click(screen.getByRole("button", { name: "Join group" }));
@@ -166,7 +166,7 @@ describe("App — cloud mode (shared groups)", () => {
   it("reports an unknown invite code", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Groups" }));
-    fireEvent.click(screen.getByText("🔗 Join with code"));
+    fireEvent.click(screen.getByText("Join with code"));
     fireEvent.change(screen.getByPlaceholderText("ABC123"), { target: { value: "NOPE12" } });
     fireEvent.click(screen.getByRole("button", { name: "Join group" }));
     await waitFor(() => expect(screen.getByText("No group found for that code.")).toBeTruthy());
@@ -176,7 +176,7 @@ describe("App — cloud mode (shared groups)", () => {
     signedIn = null;
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Groups" }));
-    fireEvent.click(screen.getByText("🔗 Join with code"));
+    fireEvent.click(screen.getByText("Join with code"));
     expect(screen.getByRole("button", { name: "Continue with Google" })).toBeTruthy();
     expect((screen.getByRole("button", { name: "Join group" }) as HTMLButtonElement).disabled).toBe(
       true,

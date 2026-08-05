@@ -116,7 +116,7 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.getByText(/Solo group/)).toBeTruthy();
     expect(document.querySelector(".invite-code")).toBeNull();
     // Backup/restore stays available for local data.
-    expect(screen.getByText("💾 Backup JSON")).toBeTruthy();
+    expect(screen.getByText("Backup JSON")).toBeTruthy();
   });
 
   it("toggles greedy settlement mode", () => {

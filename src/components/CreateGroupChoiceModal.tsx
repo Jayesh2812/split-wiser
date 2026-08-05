@@ -1,6 +1,7 @@
 import { Modal } from "./Modal";
 import { isCloudConfigured } from "../lib/firebase";
 import type { GroupKind } from "../types";
+import { Icon } from "./Icon";
 
 interface Props {
   onPick: (kind: GroupKind) => void;
@@ -13,7 +14,9 @@ export function CreateGroupChoiceModal({ onPick, onClose }: Props) {
   return (
     <Modal title="How do you want to split?" onClose={onClose}>
       <button className="choice" onClick={() => onPick("local")}>
-        <span className="choice-icon">📓</span>
+        <span className="choice-icon">
+          <Icon name="notebook" size={26} />
+        </span>
         <span className="choice-body">
           <b>Just me tracking</b>
           <small>
@@ -29,7 +32,9 @@ export function CreateGroupChoiceModal({ onPick, onClose }: Props) {
         onClick={() => cloudOn && onPick("shared")}
         disabled={!cloudOn}
       >
-        <span className="choice-icon">👥</span>
+        <span className="choice-icon">
+          <Icon name="users" size={26} />
+        </span>
         <span className="choice-body">
           <b>Invite real people</b>
           <small>

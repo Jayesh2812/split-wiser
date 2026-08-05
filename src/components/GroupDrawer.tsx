@@ -1,6 +1,7 @@
 import type { AppState, AuthUser } from "../types";
 import { groupTotals } from "../lib/finance";
 import { isCloudConfigured } from "../lib/firebase";
+import { Icon } from "./Icon";
 
 interface Props {
   state: AppState;
@@ -29,7 +30,7 @@ export function GroupDrawer({
         <div className="drawer-header">
           <h3>Groups</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
-            ✕
+            <Icon name="close" size={19} />
           </button>
         </div>
 
@@ -47,7 +48,9 @@ export function GroupDrawer({
                 <div className="brand-mark">{g.currency || "₹"}</div>
                 <div className="g-main">
                   <b>
-                    {g.name} <span className="kind-badge">{shared ? "👥" : "📓"}</span>
+                    {g.name} <span className="kind-badge">
+                      <Icon name={shared ? "users" : "notebook"} size={13} />
+                    </span>
                   </b>
                   <small>
                     {t.members} members · {g.currency}
@@ -61,15 +64,15 @@ export function GroupDrawer({
 
         <div className="drawer-actions">
           <button className="btn btn-primary btn-block" onClick={onNewGroup}>
-            ＋ New group
+            <Icon name="plus" /> New group
           </button>
           {cloudOn && (
             <button className="btn btn-ghost btn-block" onClick={onJoinGroup}>
-              🔗 Join with code
+              <Icon name="link" /> Join with code
             </button>
           )}
           <button className="btn btn-ghost btn-block" onClick={onAccount}>
-            {user ? `👤 ${user.name}` : cloudOn ? "👤 Sign in" : "👤 Account"}
+            <Icon name="user" /> {user ? user.name : cloudOn ? "Sign in" : "Account"}
           </button>
         </div>
       </div>

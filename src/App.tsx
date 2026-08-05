@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppState } from "./hooks/useStore";
-import { useAuthUser } from "./hooks/useAuth";
+import { useAuthReady, useAuthUser } from "./hooks/useAuth";
 import { useCloudSync } from "./hooks/useCloudSync";
 import { getActiveGroup, setActiveGroup } from "./lib/store";
 import type { GroupKind, Transaction } from "./types";
@@ -18,6 +18,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { TransactionModal } from "./components/TransactionModal";
 import { EmptyState } from "./components/EmptyState";
 import { Toast } from "./components/Toast";
+import { Splash } from "./components/Splash";
 
 export type TabKey = "transactions" | "balances" | "settle";
 type ModalState =
@@ -38,6 +39,7 @@ const TABS: { key: TabKey; label: string }[] = [
 export function App() {
   const state = useAppState();
   const user = useAuthUser();
+  const authReady = useAuthReady();
   useCloudSync(user);
 
   const group = getActiveGroup();
@@ -51,6 +53,10 @@ export function App() {
   }, [state.activeGroupId, state.groups]);
 
   const closeModal = () => setModal({ type: "none" });
+
+  // Hold the whole UI back until Firebase has restored the session — otherwise the
+  // signed-out home screen flashes before the user's groups arrive.
+  if (!authReady) return <Splash />;
 
   return (
     <div id="app">
@@ -78,7 +84,13 @@ export function App() {
       )}
 
       <main className="content">
-        {!group && <EmptyState onCreate={() => setModal({ type: "chooseKind" })} />}
+        {!group && (
+          <EmptyState
+            user={user}
+            onCreate={() => setModal({ type: "chooseKind" })}
+            onJoin={() => setModal({ type: "join" })}
+          />
+        )}
         {group && tab === "transactions" && (
           <TransactionsPanel
             group={group}

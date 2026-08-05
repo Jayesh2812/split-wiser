@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
 import type { AuthUser, Group } from "../types";
 import { groupTotals } from "../lib/finance";
 import { initials } from "../lib/format";
 import { isCloudConfigured } from "../lib/firebase";
+import { Icon } from "./Icon";
 
 interface TopBarProps {
   group: Group | null;
@@ -13,19 +13,6 @@ interface TopBarProps {
 }
 
 export function TopBar({ group, user, onMenu, onSettings, onAccount }: TopBarProps) {
-  const [online, setOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
-
   const totals = group ? groupTotals(group) : null;
   const shared = group?.kind === "shared";
 
@@ -33,7 +20,7 @@ export function TopBar({ group, user, onMenu, onSettings, onAccount }: TopBarPro
     <header className="topbar">
       <div className="topbar-left">
         <button className="icon-btn" aria-label="Groups" title="Groups" onClick={onMenu}>
-          ☰
+          <Icon name="menu" size={20} />
         </button>
         <div className="brand">
           <span className="brand-mark">{group?.currency || "₹"}</span>
@@ -42,7 +29,7 @@ export function TopBar({ group, user, onMenu, onSettings, onAccount }: TopBarPro
               {group ? group.name : "Splitwiser"}
               {group && (
                 <span className="kind-badge" title={shared ? "Shared group" : "Solo group"}>
-                  {shared ? "👥" : "📓"}
+                  <Icon name={shared ? "users" : "notebook"} size={13} />
                 </span>
               )}
             </strong>
@@ -53,10 +40,6 @@ export function TopBar({ group, user, onMenu, onSettings, onAccount }: TopBarPro
         </div>
       </div>
       <div className="topbar-right">
-        <span
-          className={`offline-dot${online ? "" : " off"}`}
-          title={online ? "Online — but works fully offline" : "Offline — still fully functional"}
-        />
         {isCloudConfigured() && (
           <button className="icon-btn" aria-label="Account" title="Account" onClick={onAccount}>
             {user ? (
@@ -66,13 +49,13 @@ export function TopBar({ group, user, onMenu, onSettings, onAccount }: TopBarPro
                 <span className="avatar-sm avatar-fallback">{initials(user.name)}</span>
               )
             ) : (
-              "👤"
+              <Icon name="user" size={19} />
             )}
           </button>
         )}
         {group && (
           <button className="icon-btn" aria-label="Settings" title="Settings" onClick={onSettings}>
-            ⚙
+            <Icon name="settings" size={19} />
           </button>
         )}
       </div>

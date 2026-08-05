@@ -3,6 +3,7 @@ import { memberName, settle } from "../lib/finance";
 import { colorFor, initials, money } from "../lib/format";
 import { setGreedyMode } from "../lib/store";
 import { toast } from "../lib/toast";
+import { Icon } from "./Icon";
 
 interface Props {
   group: Group;
@@ -41,7 +42,7 @@ export function SettlePanel({ group, greedy }: Props) {
       </div>
 
       {plan.length === 0 ? (
-        <div className="hint">Everyone is settled up. 🎉</div>
+        <div className="hint">Everyone is settled up.</div>
       ) : (
         <ul className="settle-list">
           {plan.map((s, i) => (
@@ -51,7 +52,9 @@ export function SettlePanel({ group, greedy }: Props) {
               </div>
               <div className="flow">
                 <span className="chip">{memberName(group, s.from)}</span>
-                <span className="arrow">→</span>
+                <span className="arrow">
+                  <Icon name="arrow-right" size={16} />
+                </span>
                 <span className="chip">{memberName(group, s.to)}</span>
               </div>
               <div className="settle-amt">{money(cur, s.amount)}</div>

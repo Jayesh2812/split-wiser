@@ -1,6 +1,7 @@
 import type { Group } from "../types";
 import { exportBackupFile, exportCsv, exportPdf } from "../lib/exporter";
 import { toast } from "../lib/toast";
+import { Icon } from "./Icon";
 
 interface ExportBarProps {
   group: Group;
@@ -26,7 +27,7 @@ export function ExportBar({ group, greedy }: ExportBarProps) {
           toast("CSV exported");
         }}
       >
-        ⬇ CSV
+        <Icon name="download" /> CSV
       </button>
       <button
         className="btn btn-ghost"
@@ -35,7 +36,7 @@ export function ExportBar({ group, greedy }: ExportBarProps) {
           exportPdf(group, greedy);
         }}
       >
-        🖨 PDF
+        <Icon name="print" /> PDF
       </button>
       <button
         className="btn btn-ghost"
@@ -44,7 +45,7 @@ export function ExportBar({ group, greedy }: ExportBarProps) {
           toast("Backup downloaded");
         }}
       >
-        💾 Backup
+        <Icon name="save" /> Backup
       </button>
     </footer>
   );

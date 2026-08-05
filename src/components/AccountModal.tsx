@@ -5,6 +5,7 @@ import { useAuthUser } from "../hooks/useAuth";
 import { isCloudConfigured } from "../lib/firebase";
 import { toast } from "../lib/toast";
 import { initials } from "../lib/format";
+import { Icon } from "./Icon";
 
 interface Props {
   onClose: () => void;
@@ -51,7 +52,7 @@ export function AccountModal({ onClose }: Props) {
             {user.photoURL ? (
               <img className="avatar" src={user.photoURL} alt="" referrerPolicy="no-referrer" />
             ) : (
-              <div className="avatar" style={{ background: "var(--accent)" }}>
+              <div className="avatar" style={{ background: "var(--text-dim)" }}>
                 {initials(user.name)}
               </div>
             )}
@@ -88,7 +89,7 @@ export function AccountModal({ onClose }: Props) {
             disabled={busy}
             onClick={() => action(signInWithGoogle, "Signed in")}
           >
-            Continue with Google
+            <Icon name="google" /> Continue with Google
           </button>
           <div className="modal-actions">
             <button className="btn btn-ghost" onClick={onClose}>

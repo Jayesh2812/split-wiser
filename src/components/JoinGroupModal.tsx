@@ -4,6 +4,7 @@ import { joinGroupByCode, setActiveGroup } from "../lib/repo";
 import { signInWithGoogle } from "../lib/auth";
 import { useAuthUser } from "../hooks/useAuth";
 import { toast } from "../lib/toast";
+import { Icon } from "./Icon";
 
 interface Props {
   onClose: () => void;
@@ -57,7 +58,7 @@ export function JoinGroupModal({ onClose, onJoined }: Props) {
             start adding expenses right away.
           </div>
           <button className="btn btn-primary btn-block" onClick={signIn} disabled={busy}>
-            Continue with Google
+            <Icon name="google" /> Continue with Google
           </button>
         </div>
       ) : (

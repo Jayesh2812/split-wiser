@@ -1,6 +1,7 @@
+/** Greyscale ramp — light enough that dark initials stay readable on top. */
 export const AVATAR_COLORS = [
-  "#22d3ee", "#6366f1", "#34d399", "#fbbf24", "#fb7185",
-  "#a78bfa", "#f472b6", "#38bdf8", "#4ade80", "#fb923c",
+  "#f5f5f5", "#d4d4d4", "#b8b8b8", "#a0a0a0", "#8c8c8c",
+  "#e5e5e5", "#c4c4c4", "#ababab", "#949494", "#7d7d7d",
 ];
 
 export const CATEGORIES = [

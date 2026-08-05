@@ -5,6 +5,7 @@ import * as repo from "../lib/repo";
 import { importBackup } from "../lib/store";
 import { exportBackupFile } from "../lib/exporter";
 import { toast } from "../lib/toast";
+import { Icon } from "./Icon";
 
 interface Props {
   group: Group;
@@ -116,12 +117,18 @@ export function SettingsModal({ group, user, onClose }: Props) {
         <div className="notice">
           {shared ? (
             <>
-              <b>👥 Shared group</b> — synced for {group.memberUids?.length ?? 1} signed-in
+              <b>
+                <Icon name="users" size={14} /> Shared group
+              </b>{" "}
+              — synced for {group.memberUids?.length ?? 1} signed-in
               member(s). Any member can add expenses.
             </>
           ) : (
             <>
-              <b>📓 Solo group</b> — only on this device, fully offline. You log everyone's
+              <b>
+                <Icon name="notebook" size={14} /> Solo group
+              </b>{" "}
+              — only on this device, fully offline. You log everyone's
               expenses yourself.
             </>
           )}
@@ -182,18 +189,22 @@ export function SettingsModal({ group, user, onClose }: Props) {
           )}
           {group.members.map((m) => (
             <span className="member-chip" key={m.id}>
-              {m.uid && <span title="Signed-in member">✅</span>}
+              {m.uid && (
+                <span title="Signed-in member">
+                  <Icon name="check" size={13} />
+                </span>
+              )}
               {m.name}
               {m.uid === user?.uid && <em className="you-tag">you</em>}
               <button title="Remove" onClick={() => remove(m.id)} disabled={busy}>
-                ✕
+                <Icon name="close" size={14} />
               </button>
             </span>
           ))}
         </div>
         {shared && (
           <small style={{ color: "var(--text-faint)" }}>
-            ✅ = joined with Google. Others are name-only participants you track manually.
+            <Icon name="check" size={12} /> = joined with Google. Others are name-only participants you track manually.
           </small>
         )}
       </div>
@@ -209,10 +220,10 @@ export function SettingsModal({ group, user, onClose }: Props) {
                 toast("Backup downloaded");
               }}
             >
-              💾 Backup JSON
+              <Icon name="save" /> Backup JSON
             </button>
             <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>
-              📂 Restore
+              <Icon name="folder" /> Restore
             </button>
           </div>
           <input
