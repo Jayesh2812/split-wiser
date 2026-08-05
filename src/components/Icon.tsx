@@ -21,7 +21,10 @@ export type IconName =
   | "wallet"
   | "party"
   | "copy"
-  | "share";
+  | "share"
+  | "info"
+  | "filter"
+  | "chevron-down";
 
 const PATHS: Record<IconName, JSX.Element> = {
   menu: (
@@ -147,6 +150,19 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M8.3 13.2l7.4 4.3" />
     </>
   ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5" />
+      <path d="M12 7.6h.01" />
+    </>
+  ),
+  filter: (
+    <>
+      <path d="M3 5.5h18l-7 8v5l-4 2v-7z" />
+    </>
+  ),
+  "chevron-down": <path d="M5 9l7 7 7-7" />,
 };
 
 interface IconProps {

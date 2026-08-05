@@ -226,10 +226,20 @@ describe("App — offline mode (no Firebase)", () => {
     const rows = () => [...document.querySelectorAll<HTMLElement>(".settle-item")];
     expect(rows().length).toBe(2); // everyone, by default
 
+    // The picker is collapsed by default — the bar shows the current scope.
+    expect(screen.queryByLabelText("Show payments for")).toBeNull();
+    // Selected by class: the Record buttons' labels also contain member names.
+    const bar = () => document.querySelector<HTMLElement>(".filter-bar")!;
+    expect(bar().textContent).toContain("Everyone");
+
     // Focus Sam: one debt out, nothing in. Option values are member ids.
+    fireEvent.click(bar());
     const pick = screen.getByLabelText("Show payments for") as HTMLSelectElement;
     const samId = [...pick.options].find((o) => o.text === "Sam")!.value;
     fireEvent.change(pick, { target: { value: samId } });
+    // Choosing collapses the picker again and the bar names the person.
+    expect(screen.queryByLabelText("Show payments for")).toBeNull();
+    expect(bar().textContent).toContain("Sam");
     expect(rows().length).toBe(1);
     expect(screen.getByText(/Sam pays 1 person/)).toBeTruthy();
     expect(screen.getByText(/receives from 0 people/)).toBeTruthy();
@@ -240,8 +250,10 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.getByText("Nobody owes Sam.")).toBeTruthy();
 
     // Alex is the other way round: owed by both, owes nobody.
-    const alexId = [...pick.options].find((o) => o.text === "Alex")!.value;
-    fireEvent.change(pick, { target: { value: alexId } });
+    fireEvent.click(bar());
+    const pick2 = screen.getByLabelText("Show payments for") as HTMLSelectElement;
+    const alexId = [...pick2.options].find((o) => o.text === "Alex")!.value;
+    fireEvent.change(pick2, { target: { value: alexId } });
     expect(rows().length).toBe(2);
     expect(screen.getByText(/Alex pays 0 people/)).toBeTruthy();
     expect(screen.getByText(/receives from 2 people/)).toBeTruthy();
@@ -249,9 +261,11 @@ describe("App — offline mode (no Firebase)", () => {
     expect(rows().length).toBe(0);
     expect(screen.getByText("Alex doesn't owe anyone.")).toBeTruthy();
 
-    // Back to everyone.
-    fireEvent.change(pick, { target: { value: "all" } });
+    // The clear button drops back to everyone.
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
     expect(rows().length).toBe(2);
+    expect(bar().textContent).toContain("Everyone");
+    expect(screen.queryByRole("button", { name: "Clear filter" })).toBeNull();
   });
 
   it("toggles greedy settlement mode", () => {
@@ -262,6 +276,12 @@ describe("App — offline mode (no Firebase)", () => {
     expect(toggle.checked).toBe(false);
     fireEvent.click(toggle);
     expect(toggle.checked).toBe(true);
+
+    // The explanation is kept behind an info toggle to save vertical space.
+    expect(screen.queryByText(/fewest possible payments/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "About settlement modes" }));
     expect(screen.getByText(/fewest possible payments/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "About settlement modes" }));
+    expect(screen.queryByText(/fewest possible payments/)).toBeNull();
   });
 });

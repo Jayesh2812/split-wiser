@@ -27,6 +27,9 @@ export function SettlePanel({ group, greedy, onRecord }: Props) {
 
   const [person, setPerson] = useState<string>("all");
   const [role, setRole] = useState<Role>("all");
+  const [showInfo, setShowInfo] = useState(false);
+  /** Only the person picker collapses — the side segment is one compact row. */
+  const [pickerOpen, setPickerOpen] = useState(false);
   // A member removed while the tab was open would otherwise filter to nothing.
   const focused = group.members.some((m) => m.id === person) ? person : "all";
 
@@ -56,9 +59,16 @@ export function SettlePanel({ group, greedy, onRecord }: Props) {
     <section className="tab-panel">
       <div className="settle-mode card">
         <div className="settle-mode-row">
-          <div>
+          <div className="settle-mode-label">
             <strong>Greedy settlement</strong>
-            <small>Minimise the number of payments needed to settle up.</small>
+            <button
+              className="info-btn"
+              aria-label="About settlement modes"
+              aria-expanded={showInfo}
+              onClick={() => setShowInfo((v) => !v)}
+            >
+              <Icon name="info" size={16} />
+            </button>
           </div>
           <label className="switch">
             <input
@@ -72,29 +82,60 @@ export function SettlePanel({ group, greedy, onRecord }: Props) {
             <span className="slider" />
           </label>
         </div>
-        <p className="settle-hint">{hint}</p>
+        {showInfo && <p className="settle-hint">{hint}</p>}
       </div>
 
       {plan.length > 0 && group.members.length > 1 && (
         <div className="settle-filter card">
-          <div className="field" style={{ marginBottom: focused === "all" ? 0 : 10 }}>
-            <label htmlFor="settle-person">Show payments for</label>
-            <select
-              id="settle-person"
-              value={focused}
-              onChange={(e) => {
-                setPerson(e.target.value);
-                setRole("all");
-              }}
+          <div className="filter-row">
+            <button
+              className="filter-bar"
+              aria-expanded={pickerOpen}
+              onClick={() => setPickerOpen((v) => !v)}
             >
-              <option value="all">Everyone</option>
-              {group.members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+              <Icon name="filter" size={15} />
+              <span className="filter-current">
+                {focused === "all" ? "Everyone" : name}
+              </span>
+              <Icon name="chevron-down" size={15} className={pickerOpen ? "flip" : ""} />
+            </button>
+            {focused !== "all" && (
+              <button
+                className="icon-btn"
+                aria-label="Clear filter"
+                title="Show everyone"
+                onClick={() => {
+                  setPerson("all");
+                  setRole("all");
+                  setPickerOpen(false);
+                }}
+              >
+                <Icon name="close" size={17} />
+              </button>
+            )}
           </div>
+
+          {pickerOpen && (
+            <div className="field filter-field">
+              <label htmlFor="settle-person">Show payments for</label>
+              <select
+                id="settle-person"
+                value={focused}
+                onChange={(e) => {
+                  setPerson(e.target.value);
+                  setRole("all");
+                  setPickerOpen(false); // chosen — give the space back
+                }}
+              >
+                <option value="all">Everyone</option>
+                {group.members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {focused !== "all" && (
             <>

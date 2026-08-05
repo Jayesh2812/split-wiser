@@ -567,10 +567,33 @@ body {
   .drawer-panel, .modal { transition: none; animation: none; }
 }
 
-/* Settle-up filter */
+/* Settle mode: title + info toggle on one line, description only on request. */
+.settle-mode-label { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.info-btn {
+  background: none; border: none; padding: 4px; margin: -4px 0 -4px 2px;
+  color: var(--text-faint); cursor: pointer; display: inline-flex; border-radius: 50%;
+}
+.info-btn:hover, .info-btn[aria-expanded="true"] { color: var(--text); }
+.settle-mode .settle-hint { margin-top: 8px; }
+
+/* Settle-up filter — collapsed to a single bar until tapped. */
 .settle-filter { margin-bottom: 12px; }
-.settle-filter .field label { margin-bottom: 6px; }
-.settle-filter .seg { margin-bottom: 10px; }
+.filter-row { display: flex; align-items: center; gap: 6px; }
+.filter-bar {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--text); font: inherit; font-weight: 600; font-size: 14px;
+  padding: 10px 12px; cursor: pointer; text-align: left;
+}
+.filter-bar:active { transform: translateY(1px); }
+.filter-bar .filter-current {
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.filter-bar .icon:first-child { color: var(--text-faint); }
+.filter-bar .flip { transform: rotate(180deg); }
+.filter-field { margin: 10px 0 0; }
+.settle-filter .seg { margin-top: 10px; }
+.settle-filter .settle-summary { margin-top: 10px; }
 .settle-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .settle-summary .stat {
   background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--radius-sm);
