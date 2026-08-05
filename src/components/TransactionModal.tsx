@@ -282,7 +282,21 @@ export function TransactionModal({ group, existing, user, onClose }: Props) {
   };
 
   return (
-    <Modal title={editing ? "Edit transaction" : "Add transaction"} onClose={onClose}>
+    <Modal
+      title={editing ? "Edit transaction" : "Add transaction"}
+      onClose={onClose}
+      headerAction={
+        <button
+          className="icon-btn header-save"
+          aria-label={editing ? "Save transaction" : "Add transaction"}
+          title={editing ? "Save" : "Add"}
+          onClick={save}
+          disabled={busy}
+        >
+          <Icon name="check" size={20} />
+        </button>
+      }
+    >
       <div className="field">
         <label>What was it for?</label>
         <input

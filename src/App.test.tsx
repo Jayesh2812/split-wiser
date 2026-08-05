@@ -448,6 +448,30 @@ describe("App — offline mode (no Firebase)", () => {
     expect(window.location.pathname).toBe("/goa-trip/balances");
   });
 
+  it("saves from the header button as well as the footer", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+
+    // Adding: the header action mirrors the footer, so a tall sheet needs no scroll.
+    fireEvent.click(screen.getByRole("button", { name: "＋ Add" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. Dinner, Cab, Groceries"), {
+      target: { value: "Cab" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "40" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add transaction" }));
+    await waitFor(() => expect(screen.queryByText("Add transaction")).toBeNull());
+    expect(screen.getByText("Cab")).toBeTruthy();
+
+    // Editing: same button, now labelled for saving.
+    fireEvent.click(screen.getByText("Cab"));
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save transaction" }));
+    await waitFor(() => expect(screen.queryByText("Edit transaction")).toBeNull());
+
+    const summary = document.querySelector(".tx-summary") as HTMLElement;
+    expect(within(summary).getByText("₹60.00")).toBeTruthy();
+  });
+
   it("toggles greedy settlement mode", () => {
     render(<App />);
     createSoloGroup("", "Alex\nSam");

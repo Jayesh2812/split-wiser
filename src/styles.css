@@ -628,3 +628,14 @@ body {
   color: var(--text-faint); display: inline-flex; flex: none;
 }
 .payer-list .chip-cancel:hover { color: var(--text); }
+
+/* Primary action in the sheet header — only where the footer needs scrolling to */
+.modal-header-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.modal-header-actions .icon-btn { margin-right: 0; }
+.modal-header-actions .icon-btn:last-child { margin-right: -6px; }
+/* Two classes, to outrank `.modal-header .icon-btn`'s dim colour. */
+.modal-header-actions .header-save { display: none; color: var(--text); }
+.modal-header-actions .header-save:disabled { opacity: .5; pointer-events: none; }
+@media (max-width: 560px) {
+  .modal-header-actions .header-save { display: grid; }
+}

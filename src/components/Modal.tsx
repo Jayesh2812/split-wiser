@@ -4,10 +4,15 @@ import { Icon } from "./Icon";
 interface ModalProps {
   title: string;
   onClose: () => void;
+  /**
+   * Optional control shown beside the close button — used to put the primary
+   * action within reach on a small screen, where the footer needs scrolling to.
+   */
+  headerAction?: ReactNode;
   children: ReactNode;
 }
 
-export function Modal({ title, onClose, children }: ModalProps) {
+export function Modal({ title, onClose, headerAction, children }: ModalProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -22,9 +27,12 @@ export function Modal({ title, onClose, children }: ModalProps) {
       <div className="modal">
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="icon-btn" aria-label="Close" title="Close" onClick={onClose}>
-            <Icon name="close" size={20} />
-          </button>
+          <div className="modal-header-actions">
+            {headerAction}
+            <button className="icon-btn" aria-label="Close" title="Close" onClick={onClose}>
+              <Icon name="close" size={20} />
+            </button>
+          </div>
         </div>
         {children}
       </div>
