@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { Icon } from "./Icon";
 
 interface ModalProps {
   title: string;
@@ -19,7 +20,12 @@ export function Modal({ title, onClose, children }: ModalProps) {
     <div className="modal-host" role="dialog" aria-modal="true">
       <div className="modal-backdrop" onClick={onClose} />
       <div className="modal">
-        <h3>{title}</h3>
+        <div className="modal-header">
+          <h3>{title}</h3>
+          <button className="icon-btn" aria-label="Close" title="Close" onClick={onClose}>
+            <Icon name="close" size={20} />
+          </button>
+        </div>
         {children}
       </div>
     </div>

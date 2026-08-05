@@ -119,6 +119,46 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.getByText("Backup JSON")).toBeTruthy();
   });
 
+  it("opens settings by tapping the group name", () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+    fireEvent.click(screen.getByRole("button", { name: "Settings for Trip" }));
+    expect(screen.getByText("Settings")).toBeTruthy();
+    // The group-name field is prefilled, which only the Settings sheet renders.
+    expect(screen.getByDisplayValue("Trip")).toBeTruthy();
+  });
+
+  it("requires two steps to remove a member", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    const chipFor = (name: string) =>
+      [...document.querySelectorAll<HTMLElement>(".member-chip")].find((c) =>
+        c.textContent?.includes(name),
+      );
+
+    // First click only arms the confirmation — Sam is still a member.
+    fireEvent.click(within(chipFor("Sam")!).getByRole("button", { name: "Remove" }));
+    expect(screen.getByText("Remove Sam?")).toBeTruthy();
+    expect(screen.getByText(/2 members/)).toBeTruthy();
+
+    // Backing out leaves the member alone.
+    fireEvent.click(
+      within(chipFor("Sam")!).getByRole("button", { name: "Keep this member" }),
+    );
+    expect(screen.queryByText("Remove Sam?")).toBeNull();
+    expect(screen.getByText(/2 members/)).toBeTruthy();
+
+    // Confirming actually removes.
+    fireEvent.click(within(chipFor("Sam")!).getByRole("button", { name: "Remove" }));
+    fireEvent.click(
+      within(chipFor("Sam")!).getByRole("button", { name: "Confirm removal" }),
+    );
+    await waitFor(() => expect(chipFor("Sam")).toBeUndefined());
+    expect(screen.getByText(/1 members/)).toBeTruthy();
+  });
+
   it("toggles greedy settlement mode", () => {
     render(<App />);
     createSoloGroup("", "Alex\nSam");

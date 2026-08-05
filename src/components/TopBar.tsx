@@ -22,7 +22,25 @@ export function TopBar({ group, user, onMenu, onSettings, onAccount }: TopBarPro
         <button className="icon-btn" aria-label="Groups" title="Groups" onClick={onMenu}>
           <Icon name="menu" size={20} />
         </button>
-        <div className="brand">
+        {/* With a group open the whole brand block is a button into Settings. */}
+        <div
+          className={`brand${group ? " brand-tappable" : ""}`}
+          {...(group
+            ? {
+                role: "button",
+                tabIndex: 0,
+                title: "Group settings",
+                "aria-label": `Settings for ${group.name}`,
+                onClick: onSettings,
+                onKeyDown: (e: React.KeyboardEvent) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSettings();
+                  }
+                },
+              }
+            : {})}
+        >
           <span className="brand-mark">{group?.currency || "₹"}</span>
           <div className="brand-text">
             <strong>

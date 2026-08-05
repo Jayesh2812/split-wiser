@@ -230,7 +230,7 @@ body {
   animation: slideup .22s ease;
 }
 @keyframes slideup { from { transform: translateY(20px); opacity: .6; } to { transform: none; opacity: 1; } }
-.modal h3 { margin: 0 0 14px; }
+
 .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
 .modal-actions .btn { flex: 1; justify-content: center; }
 
@@ -405,3 +405,35 @@ body {
   animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Tappable group name in the top bar */
+.brand-tappable { cursor: pointer; border-radius: var(--radius-sm); padding: 4px 6px; margin: -4px -6px; }
+.brand-tappable:active { background: rgba(255,255,255,0.06); }
+.brand-tappable:focus-visible { outline: 2px solid var(--text-dim); outline-offset: 1px; }
+
+/* Two-step member removal */
+.member-chip.confirming {
+  border-color: var(--line-strong); border-style: dashed; color: var(--text);
+}
+.member-chip .chip-confirm { color: var(--text); }
+.member-chip .chip-cancel { color: var(--text-faint); }
+
+/* Sheet header: title on the left, close on the right — mirrors .drawer-header. */
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 14px;
+}
+.modal-header h3 { margin: 0; min-width: 0; }
+.modal-header .icon-btn { flex: none; margin-right: -6px; color: var(--text-dim); }
+.modal-header .icon-btn:hover { color: var(--text); }
+
+/* Signed-in members carry a Google-coloured glow; name-only members stay plain.
+   These four brand colours are the one deliberate exception to the mono theme. */
+.member-chip.google {
+  border-color: rgba(66, 133, 244, 0.5);
+  box-shadow:
+    -3px -3px 9px -4px rgba(66, 133, 244, 0.9),
+     3px -3px 9px -4px rgba(234, 67, 53, 0.85),
+     3px  3px 9px -4px rgba(251, 188, 5, 0.85),
+    -3px  3px 9px -4px rgba(52, 168, 83, 0.85);
+}

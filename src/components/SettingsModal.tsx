@@ -18,6 +18,8 @@ export function SettingsModal({ group, user, onClose }: Props) {
   const [currency, setCurrency] = useState(group.currency);
   const [newMember, setNewMember] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Member awaiting delete confirmation — the chip swaps to a confirm/cancel pair. */
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const shared = group.kind === "shared";
@@ -44,6 +46,7 @@ export function SettingsModal({ group, user, onClose }: Props) {
 
   const remove = (memberId: string) =>
     run(async () => {
+      setPendingRemove(null);
       const res = await repo.removeMember(group, memberId);
       if (!res.ok) {
         toast(
@@ -187,24 +190,50 @@ export function SettingsModal({ group, user, onClose }: Props) {
           {group.members.length === 0 && (
             <small style={{ color: "var(--text-faint)" }}>No members yet.</small>
           )}
-          {group.members.map((m) => (
-            <span className="member-chip" key={m.id}>
-              {m.uid && (
-                <span title="Signed-in member">
-                  <Icon name="check" size={13} />
-                </span>
-              )}
-              {m.name}
-              {m.uid === user?.uid && <em className="you-tag">you</em>}
-              <button title="Remove" onClick={() => remove(m.id)} disabled={busy}>
-                <Icon name="close" size={14} />
-              </button>
-            </span>
-          ))}
+          {group.members.map((m) =>
+            pendingRemove === m.id ? (
+              <span className="member-chip confirming" key={m.id}>
+                Remove {m.name}?
+                <button
+                  className="chip-confirm"
+                  title="Confirm removal"
+                  onClick={() => remove(m.id)}
+                  disabled={busy}
+                >
+                  <Icon name="check" size={14} />
+                </button>
+                <button
+                  className="chip-cancel"
+                  title="Keep this member"
+                  onClick={() => setPendingRemove(null)}
+                  disabled={busy}
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </span>
+            ) : (
+              <span
+                className={`member-chip${m.uid ? " google" : ""}`}
+                key={m.id}
+                title={m.uid ? "Joined with Google" : "Name-only participant"}
+              >
+                {m.name}
+                {m.uid === user?.uid && <em className="you-tag">you</em>}
+                <button
+                  title="Remove"
+                  onClick={() => setPendingRemove(m.id)}
+                  disabled={busy}
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </span>
+            ),
+          )}
         </div>
         {shared && (
           <small style={{ color: "var(--text-faint)" }}>
-            <Icon name="check" size={12} /> = joined with Google. Others are name-only participants you track manually.
+            A coloured glow means they joined with Google. Plain chips are name-only
+            participants you track manually.
           </small>
         )}
       </div>

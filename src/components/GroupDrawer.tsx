@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { AppState, AuthUser } from "../types";
 import { groupTotals } from "../lib/finance";
 import { isCloudConfigured } from "../lib/firebase";
@@ -23,6 +24,15 @@ export function GroupDrawer({
   onPick,
 }: Props) {
   const cloudOn = isCloudConfigured();
+
+  // Match the modals: Escape closes the drawer too.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
     <div className="drawer" role="dialog" aria-label="Groups">
