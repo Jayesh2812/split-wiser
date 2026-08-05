@@ -216,6 +216,44 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.queryByPlaceholderText("e.g. Dinner, Cab, Groceries")).toBeNull();
   });
 
+  it("filters Settle Up by person and by which side they are on", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam\nJordan");
+    // Alex pays 90 for all three, so Sam and Jordan each owe Alex 30.
+    await addExpense("Dinner", "90");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Settle Up" }));
+    const rows = () => [...document.querySelectorAll<HTMLElement>(".settle-item")];
+    expect(rows().length).toBe(2); // everyone, by default
+
+    // Focus Sam: one debt out, nothing in. Option values are member ids.
+    const pick = screen.getByLabelText("Show payments for") as HTMLSelectElement;
+    const samId = [...pick.options].find((o) => o.text === "Sam")!.value;
+    fireEvent.change(pick, { target: { value: samId } });
+    expect(rows().length).toBe(1);
+    expect(screen.getByText(/Sam pays 1 person/)).toBeTruthy();
+    expect(screen.getByText(/receives from 0 people/)).toBeTruthy();
+
+    // Sam receives from nobody.
+    fireEvent.click(screen.getByRole("button", { name: "Receiving" }));
+    expect(rows().length).toBe(0);
+    expect(screen.getByText("Nobody owes Sam.")).toBeTruthy();
+
+    // Alex is the other way round: owed by both, owes nobody.
+    const alexId = [...pick.options].find((o) => o.text === "Alex")!.value;
+    fireEvent.change(pick, { target: { value: alexId } });
+    expect(rows().length).toBe(2);
+    expect(screen.getByText(/Alex pays 0 people/)).toBeTruthy();
+    expect(screen.getByText(/receives from 2 people/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Paying" }));
+    expect(rows().length).toBe(0);
+    expect(screen.getByText("Alex doesn't owe anyone.")).toBeTruthy();
+
+    // Back to everyone.
+    fireEvent.change(pick, { target: { value: "all" } });
+    expect(rows().length).toBe(2);
+  });
+
   it("toggles greedy settlement mode", () => {
     render(<App />);
     createSoloGroup("", "Alex\nSam");
