@@ -1,0 +1,253 @@
+import { useRef, useState } from "react";
+import { Modal } from "./Modal";
+import type { AuthUser, Group } from "../types";
+import * as repo from "../lib/repo";
+import { importBackup } from "../lib/store";
+import { exportBackupFile } from "../lib/exporter";
+import { toast } from "../lib/toast";
+
+interface Props {
+  group: Group;
+  user: AuthUser | null;
+  onClose: () => void;
+}
+
+export function SettingsModal({ group, user, onClose }: Props) {
+  const [name, setName] = useState(group.name);
+  const [currency, setCurrency] = useState(group.currency);
+  const [newMember, setNewMember] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const shared = group.kind === "shared";
+  const isOwner = !shared || group.ownerUid === user?.uid;
+
+  const run = async (fn: () => Promise<unknown>) => {
+    try {
+      setBusy(true);
+      await fn();
+    } catch (e) {
+      console.error(e);
+      toast(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addOne = () => {
+    const n = newMember.trim();
+    if (!n) return;
+    setNewMember("");
+    void run(() => repo.addMember(group, n));
+  };
+
+  const remove = (memberId: string) =>
+    run(async () => {
+      const res = await repo.removeMember(group, memberId);
+      if (!res.ok) {
+        toast(
+          res.reason === "in-use"
+            ? "Member is used in transactions — can't remove."
+            : "Can't remove.",
+        );
+      }
+    });
+
+  const copyCode = async () => {
+    if (!group.inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(group.inviteCode);
+      toast("Invite code copied");
+    } catch {
+      toast(`Invite code: ${group.inviteCode}`);
+    }
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        importBackup(String(reader.result));
+        toast("Backup restored");
+        onClose();
+      } catch {
+        toast("Invalid backup file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const save = () =>
+    run(async () => {
+      await repo.updateGroup(group, {
+        name: name.trim() || group.name,
+        currency: currency.trim() || "₹",
+      });
+      toast("Settings saved");
+      onClose();
+    });
+
+  const del = () => {
+    if (!confirm(`Delete group "${group.name}" and all its transactions? This cannot be undone.`))
+      return;
+    void run(async () => {
+      await repo.deleteGroup(group);
+      toast("Group deleted");
+      onClose();
+    });
+  };
+
+  const leave = () => {
+    if (!user) return;
+    if (!confirm(`Leave "${group.name}"? You'll need the invite code to rejoin.`)) return;
+    void run(async () => {
+      await repo.leaveGroup(group, user);
+      toast("Left the group");
+      onClose();
+    });
+  };
+
+  return (
+    <Modal title="Settings" onClose={onClose}>
+      <div className="field">
+        <label>Group type</label>
+        <div className="notice">
+          {shared ? (
+            <>
+              <b>👥 Shared group</b> — synced for {group.memberUids?.length ?? 1} signed-in
+              member(s). Any member can add expenses.
+            </>
+          ) : (
+            <>
+              <b>📓 Solo group</b> — only on this device, fully offline. You log everyone's
+              expenses yourself.
+            </>
+          )}
+        </div>
+      </div>
+
+      {shared && group.inviteCode && (
+        <div className="field">
+          <label>Invite code</label>
+          <div className="invite-row">
+            <code className="invite-code">{group.inviteCode}</code>
+            <button className="btn btn-ghost" onClick={copyCode}>
+              Copy
+            </button>
+          </div>
+          <small style={{ color: "var(--text-faint)" }}>
+            Share this code. Anyone who signs in with Google and enters it joins as a member.
+          </small>
+        </div>
+      )}
+
+      <div className="field">
+        <label>Group name</label>
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Currency symbol</label>
+        <input
+          type="text"
+          maxLength={3}
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+        />
+      </div>
+
+      <div className="field">
+        <label>Members</label>
+        <div className="row">
+          <input
+            type="text"
+            placeholder={shared ? "Add a name-only person…" : "Add a member…"}
+            value={newMember}
+            onChange={(e) => setNewMember(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addOne()}
+          />
+          <button
+            className="btn btn-primary"
+            style={{ flex: "0 0 auto" }}
+            onClick={addOne}
+            disabled={busy}
+          >
+            Add
+          </button>
+        </div>
+        <div className="member-chips">
+          {group.members.length === 0 && (
+            <small style={{ color: "var(--text-faint)" }}>No members yet.</small>
+          )}
+          {group.members.map((m) => (
+            <span className="member-chip" key={m.id}>
+              {m.uid && <span title="Signed-in member">✅</span>}
+              {m.name}
+              {m.uid === user?.uid && <em className="you-tag">you</em>}
+              <button title="Remove" onClick={() => remove(m.id)} disabled={busy}>
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+        {shared && (
+          <small style={{ color: "var(--text-faint)" }}>
+            ✅ = joined with Google. Others are name-only participants you track manually.
+          </small>
+        )}
+      </div>
+
+      {!shared && (
+        <div className="field">
+          <label>Data</label>
+          <div className="row">
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                exportBackupFile();
+                toast("Backup downloaded");
+              }}
+            >
+              💾 Backup JSON
+            </button>
+            <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>
+              📂 Restore
+            </button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={onFile}
+          />
+          <small style={{ color: "var(--text-faint)" }}>
+            Backups cover solo groups. Shared groups already live in the cloud.
+          </small>
+        </div>
+      )}
+
+      <div className="field">
+        {shared && !isOwner ? (
+          <button className="btn btn-danger btn-block" onClick={leave} disabled={busy}>
+            Leave this group
+          </button>
+        ) : (
+          <button className="btn btn-danger btn-block" onClick={del} disabled={busy}>
+            Delete this group{shared ? " for everyone" : ""}
+          </button>
+        )}
+      </div>
+
+      <div className="modal-actions">
+        <button className="btn btn-ghost" onClick={onClose}>
+          Close
+        </button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>
+          Save
+        </button>
+      </div>
+    </Modal>
+  );
+}
