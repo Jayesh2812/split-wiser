@@ -201,8 +201,9 @@ describe("App — cloud mode (shared groups)", () => {
     expect(vi.mocked(cloud.lookupInviteCode).mock.calls[0]![0]).toBe("XY7K2M");
     expect(cloud.joinByInviteCode).not.toHaveBeenCalled();
 
-    // The param is dropped so a refresh doesn't re-prompt.
-    expect(window.location.search).toBe("");
+    // The join param is dropped so a refresh doesn't re-prompt. Other params
+    // remain: the app also keeps the current group and tab in the URL.
+    expect(new URLSearchParams(window.location.search).has("join")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Join group" }));
     await waitFor(() => expect(cloud.joinByInviteCode).toHaveBeenCalledOnce());

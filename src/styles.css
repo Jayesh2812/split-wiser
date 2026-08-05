@@ -610,3 +610,8 @@ body {
   padding-top: 10px; border-top: 1px dashed var(--line);
 }
 .split-row label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Original amount under the converted one, for a foreign expense */
+.tx-amt small {
+  display: block; color: var(--text-faint); font-size: 11px; font-weight: 600;
+}

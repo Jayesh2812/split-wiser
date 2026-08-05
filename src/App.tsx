@@ -24,6 +24,7 @@ import { EmptyState } from "./components/EmptyState";
 import { Toast } from "./components/Toast";
 import { Splash } from "./components/Splash";
 import { clearInviteFromUrl, readInviteFromUrl } from "./lib/invite";
+import { readRoute, writeRoute } from "./lib/route";
 import { useScrollLock, useViewportVars } from "./hooks/useViewport";
 
 export type TabKey = "transactions" | "balances" | "settle";
@@ -42,6 +43,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "balances", label: "Balances" },
   { key: "settle", label: "Settle Up" },
 ];
+
+const isTab = (v: string | null): v is TabKey => TABS.some((t) => t.key === v);
 
 /**
  * A settlement must not open in the expense form — that form would render it as
@@ -62,7 +65,17 @@ export function App() {
   useViewportVars();
 
   const group = getActiveGroup();
-  const [tab, setTab] = useState<TabKey>("transactions");
+  // Restore position from the URL on first render so a refresh stays put.
+  const [tab, setTab] = useState<TabKey>(() => {
+    const t = readRoute().tab;
+    return isTab(t) ? t : "transactions";
+  });
+  /**
+   * Group id from the URL that has not been applied yet. Shared groups arrive
+   * asynchronously over the Firestore snapshot, so the target may not exist on
+   * first render — hold it until it does.
+   */
+  const [pendingGroup, setPendingGroup] = useState<string | null>(() => readRoute().group);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
 
@@ -75,10 +88,26 @@ export function App() {
     setModal({ type: "join", code });
   }, []);
 
-  // Adopt the first group if none is active (e.g. after restore or sign-out).
+  // Apply the URL's group once it has loaded.
   useEffect(() => {
+    if (!pendingGroup) return;
+    if (state.groups.some((g) => g.id === pendingGroup)) {
+      setActiveGroup(pendingGroup);
+      setPendingGroup(null);
+    }
+  }, [pendingGroup, state.groups]);
+
+  // Adopt the first group if none is active (e.g. after restore or sign-out).
+  // Held off while a URL group is still pending, or we would flash the wrong one.
+  useEffect(() => {
+    if (pendingGroup) return;
     if (!state.activeGroupId && state.groups.length) setActiveGroup(state.groups[0]!.id);
-  }, [state.activeGroupId, state.groups]);
+  }, [state.activeGroupId, state.groups, pendingGroup]);
+
+  // Keep the URL in step with where the user actually is.
+  useEffect(() => {
+    writeRoute(group?.id ?? null, tab);
+  }, [group?.id, tab]);
 
   const closeModal = () => setModal({ type: "none" });
 

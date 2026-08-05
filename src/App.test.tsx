@@ -20,7 +20,10 @@ beforeEach(() => {
   localStorage.clear();
   resetAll();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState({}, "", "/");
+});
 
 /** Walk the "new group" flow, choosing the solo option. */
 function createSoloGroup(name: string, memberNames: string) {
@@ -327,6 +330,39 @@ describe("App — offline mode (no Firebase)", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByText("Dinner")).toBeTruthy();
     expect(screen.getByText(/2 members/)).toBeTruthy();
+  });
+
+  it("keeps the group and tab in the URL, and restores them on reload", async () => {
+    const { unmount } = render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+    await addExpense("Dinner", "100");
+
+    const groupId = () => new URLSearchParams(window.location.search).get("g");
+    const tabParam = () => new URLSearchParams(window.location.search).get("t");
+
+    expect(groupId()).toBeTruthy();
+    expect(tabParam()).toBe("transactions");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Balances" }));
+    expect(tabParam()).toBe("balances");
+
+    // Simulate a refresh: same URL, fresh mount, same state on disk.
+    const saved = groupId();
+    unmount();
+    render(<App />);
+    expect(
+      (screen.getByRole("tab", { name: "Balances" }) as HTMLElement).className,
+    ).toContain("active");
+    expect(groupId()).toBe(saved);
+  });
+
+  it("ignores an unknown tab in the URL", () => {
+    window.history.replaceState({}, "", "/?t=nonsense");
+    render(<App />);
+    createSoloGroup("Trip", "Alex");
+    expect(
+      (screen.getByRole("tab", { name: "Transactions" }) as HTMLElement).className,
+    ).toContain("active");
   });
 
   it("toggles greedy settlement mode", () => {

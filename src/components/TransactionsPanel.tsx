@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import type { Group, Transaction } from "../types";
-import { groupTotals, isPayment, memberName, paymentRecipient } from "../lib/finance";
+import {
+  groupTotals,
+  isForeign,
+  isPayment,
+  memberName,
+  paymentRecipient,
+  txPayers,
+  txTotalInGroup,
+} from "../lib/finance";
 import { fmtDate, money } from "../lib/format";
 
 interface Props {
@@ -12,6 +20,15 @@ interface Props {
 
 export function TransactionsPanel({ group, onAdd, onEdit, onNeedMembers }: Props) {
   const [query, setQuery] = useState("");
+
+  /** "Alex paid", "Alex & Sam paid", "Alex +2 others paid". */
+  const paidByLabel = (t: Transaction): string => {
+    const ids = Object.keys(txPayers(t));
+    const names = ids.map((id) => memberName(group, id));
+    if (names.length === 1) return `${names[0]} paid`;
+    if (names.length === 2) return `${names[0]} & ${names[1]} paid`;
+    return `${names[0]} +${names.length - 1} others paid`;
+  };
   const totals = groupTotals(group);
   const cur = group.currency;
 
@@ -23,7 +40,10 @@ export function TransactionsPanel({ group, onAdd, onEdit, onNeedMembers }: Props
     if (!q) return list;
     return list.filter((t) => {
       const to = paymentRecipient(t);
-      const haystack = `${t.description} ${t.note} ${memberName(group, t.paidBy)}${
+      const payerNames = Object.keys(txPayers(t))
+        .map((id) => memberName(group, id))
+        .join(" ");
+      const haystack = `${t.description} ${t.note} ${payerNames}${
         to ? ` ${memberName(group, to)} settlement payment` : ""
       }`;
       return haystack.toLowerCase().includes(q);
@@ -91,10 +111,16 @@ export function TransactionsPanel({ group, onAdd, onEdit, onNeedMembers }: Props
                 <div className="tx-sub">
                   {payment && to
                     ? `${memberName(group, t.paidBy)} paid ${memberName(group, to)} · ${fmtDate(t.date)}`
-                    : `${memberName(group, t.paidBy)} paid · ${fmtDate(t.date)} · split ${t.split.among.length}`}
+                    : `${paidByLabel(t)} · ${fmtDate(t.date)} · split ${t.split.among.length}`}
+                  {t.recurrence ? ` · repeats ${t.recurrence}` : ""}
                 </div>
               </div>
-              <div className="tx-amt">{money(cur, t.amount)}</div>
+              {/* The group-currency value leads, so the column stays comparable and
+                  matches the balances; what was actually paid sits underneath. */}
+              <div className="tx-amt">
+                {money(cur, txTotalInGroup(t))}
+                {isForeign(t, cur) && <small>{money(t.currency!, t.amount)}</small>}
+              </div>
             </li>
           );
         })}
