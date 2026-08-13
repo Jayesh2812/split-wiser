@@ -86,6 +86,20 @@ export interface Group {
   memberUids?: string[];
   /** short code others type to join */
   inviteCode?: string | null;
+
+  /* ---- published settlement (shared groups only, owner-controlled) ---- */
+  /**
+   * Opaque token in the public URL /s/<token>. Absent until the owner publishes.
+   * The group id is deliberately NOT part of the published document — knowing a
+   * groupId is enough to self-join a group (see isJoiningSelf in firestore.rules).
+   */
+  publicToken?: string | null;
+  publishedAt?: number | null;
+  /**
+   * fingerprint() of the snapshot as it was published. Compared against the
+   * current snapshot to tell the owner their public page has gone stale.
+   */
+  publishedFingerprint?: string | null;
 }
 
 export interface Settings {

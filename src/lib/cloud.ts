@@ -4,6 +4,8 @@
  * Data model — deliberately minimal:
  *   groups/{groupId}    one document holding the whole Group blob
  *   invites/{code}      { groupId, groupName } so a code can be resolved to a group
+ *   public_settlements/{token}      world-readable frozen settlement summary
+ *   public_settlement_refs/{token}  { groupId }, readable only by firestore.rules
  *
  * Writes use arrayUnion/arrayRemove rather than whole-document writes, so two
  * members adding an expense at the same time cannot clobber each other.
@@ -22,6 +24,8 @@ import {
   where,
 } from "firebase/firestore";
 import { getDbOrNull } from "./firebase";
+import { PUBLIC_SETTLEMENTS, PUBLIC_SETTLEMENT_REFS } from "./publicSettlement";
+import type { SettlementSnapshot } from "./snapshot";
 import type { AuthUser, Group, Member, Transaction } from "../types";
 
 const GROUPS = "groups";
@@ -40,6 +44,22 @@ export function makeInviteCode(): string {
   const rand = new Uint32Array(6);
   crypto.getRandomValues(rand);
   for (let i = 0; i < 6; i++) out += alphabet[rand[i]! % alphabet.length];
+  return out;
+}
+
+/**
+ * 22-character base62 token (~131 bits) for a public settlement URL.
+ *
+ * Deliberately not makeInviteCode's alphabet: 32^6 is fine for a code someone
+ * types, but this one guards financial data at a world-readable URL and must not
+ * be guessable.
+ */
+export function makePublicToken(): string {
+  const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  let out = "";
+  const rand = new Uint32Array(22);
+  crypto.getRandomValues(rand);
+  for (let i = 0; i < 22; i++) out += alphabet[rand[i]! % alphabet.length];
   return out;
 }
 
@@ -186,10 +206,73 @@ export async function updateGroupMeta(
 }
 
 export async function deleteSharedGroup(group: Group) {
+  // ORDER MATTERS. The published docs are authorised *through* the group doc
+  // (settlementGroupId -> groups/{id}.ownerUid). Delete the group first and both
+  // become undeletable, leaving a world-readable settlement forever.
+  if (group.publicToken) {
+    await deleteDoc(doc(db(), PUBLIC_SETTLEMENTS, group.publicToken)).catch(() => {});
+    await deleteDoc(doc(db(), PUBLIC_SETTLEMENT_REFS, group.publicToken)).catch(() => {});
+  }
   if (group.inviteCode) {
     await deleteDoc(doc(db(), INVITES, group.inviteCode)).catch(() => {});
   }
   await deleteDoc(doc(db(), GROUPS, group.id));
+}
+
+/* ---------------- publish / unpublish a settlement ---------------- */
+
+/**
+ * Publish (or republish) the frozen snapshot, returning the token used.
+ *
+ * The token is REUSED on republish: the link is already sitting in a chat thread,
+ * and silently rotating it would break every copy. An owner who wants to
+ * invalidate the old link unpublishes first, which mints a fresh token.
+ */
+export async function publishSettlement(
+  group: Group,
+  snapshot: SettlementSnapshot,
+  fingerprint: string,
+): Promise<{ token: string; publishedAt: number }> {
+  const token = group.publicToken || makePublicToken();
+  const publishedAt = Date.now();
+
+  // The ref doc FIRST: the settlement's own write rule resolves the owner through
+  // it, so writing the payload before the ref exists is denied.
+  await setDoc(doc(db(), PUBLIC_SETTLEMENT_REFS, token), { groupId: group.id });
+
+  // Full overwrite, no merge, so a republish cannot leave a key behind from an
+  // older payload shape.
+  await setDoc(doc(db(), PUBLIC_SETTLEMENTS, token), clean({ ...snapshot, publishedAt }));
+
+  // One publishedAt for both, so the page stamp and the group record agree.
+  await updateDoc(doc(db(), GROUPS, group.id), {
+    publicToken: token,
+    publishedAt,
+    publishedFingerprint: fingerprint,
+  });
+
+  return { token, publishedAt };
+}
+
+/** Stop sharing: remove the public docs, then clear the group's pointer. */
+export async function unpublishSettlement(group: Group) {
+  const token = group.publicToken;
+  if (token) {
+    // Reverse of publish. Removing the ref first would make the payload
+    // permanently unauthorised to delete, and so permanently public.
+    //
+    // Note the asymmetry: the payload delete is deliberately NOT caught, so a
+    // failure aborts before the group's pointer is cleared. Clearing it while the
+    // page is still live would tell the owner they had stopped sharing when they
+    // had not. An orphaned ref doc, by contrast, is unreadable and harmless.
+    await deleteDoc(doc(db(), PUBLIC_SETTLEMENTS, token));
+    await deleteDoc(doc(db(), PUBLIC_SETTLEMENT_REFS, token)).catch(() => {});
+  }
+  await updateDoc(doc(db(), GROUPS, group.id), {
+    publicToken: null,
+    publishedAt: null,
+    publishedFingerprint: null,
+  });
 }
 
 /** Add a name-only member (a placeholder person with no account). */

@@ -37,6 +37,11 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
         navigateFallback: "index.html",
+        // A published settlement must come from the network, not the cached
+        // shell: a shell built before that route existed has no public branch, so
+        // <App/> would mount and writeRoute would erase the token from the URL.
+        // autoUpdate only fixes that on the NEXT load, which is one too late.
+        navigateFallbackDenylist: [/^\/s\//],
         cleanupOutdatedCaches: true,
       },
       devOptions: {

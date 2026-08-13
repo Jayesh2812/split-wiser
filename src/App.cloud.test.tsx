@@ -4,7 +4,7 @@
  * is supplied, so the shared-group flow is exercised with no network access.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import type { AuthUser, Group } from "./types";
 
 const USER: AuthUser = {
@@ -89,6 +89,30 @@ vi.mock("./lib/cloud", () => ({
   deleteSharedGroup: vi.fn(async () => {}),
   leaveSharedGroup: vi.fn(async () => {}),
   makeInviteCode: () => "XY7K2M",
+  makePublicToken: () => "tok0000000000000000001",
+  // repo.ts does `import * as cloud`, so anything missing here is undefined at
+  // call time rather than a module-resolution error.
+  publishSettlement: vi.fn(async (g: Group) => {
+    const token = g.publicToken || "tok0000000000000000001";
+    const publishedAt = 1_700_000_000_000;
+    const target = cloudGroups.find((x) => x.id === g.id);
+    if (target) {
+      target.publicToken = token;
+      target.publishedAt = publishedAt;
+      target.publishedFingerprint = "deadbeefdeadbeef";
+      emit();
+    }
+    return { token, publishedAt };
+  }),
+  unpublishSettlement: vi.fn(async (g: Group) => {
+    const target = cloudGroups.find((x) => x.id === g.id);
+    if (target) {
+      target.publicToken = null;
+      target.publishedAt = null;
+      target.publishedFingerprint = null;
+      emit();
+    }
+  }),
 }));
 
 const { App } = await import("./App");
@@ -248,5 +272,124 @@ describe("App — cloud mode (shared groups)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create group" }));
     expect(screen.getByText(/2 members/)).toBeTruthy();
     expect(cloud.createSharedGroup).not.toHaveBeenCalled();
+  });
+});
+
+describe("App — publishing a final settlement", () => {
+  /** Seed a shared group straight through the snapshot listener. */
+  const seed = (patch: Partial<Group> = {}) => {
+    cloudGroups.push({
+      id: "cloud1",
+      name: "Goa Trip",
+      currency: "₹",
+      createdAt: 0,
+      members: [
+        { id: "mem_u1", name: "Alex Doe", uid: "u1" },
+        { id: "mem_sam", name: "Sam", uid: null },
+      ],
+      transactions: [],
+      kind: "shared",
+      ownerUid: "u1",
+      memberUids: ["u1"],
+      inviteCode: "XY7K2M",
+      ...patch,
+    });
+  };
+
+  const openSettings = () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  };
+
+  beforeEach(() => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+
+  it("offers publishing to the owner of a shared group", () => {
+    seed();
+    openSettings();
+    expect(screen.getByRole("button", { name: /Publish settlement/ })).toBeTruthy();
+  });
+
+  it("publishes without sending any group secret to the public document", async () => {
+    seed();
+    openSettings();
+    fireEvent.click(screen.getByRole("button", { name: /Publish settlement/ }));
+
+    await waitFor(() => expect(cloud.publishSettlement).toHaveBeenCalledOnce());
+    const [, snapshot, fp] = vi.mocked(cloud.publishSettlement).mock.calls[0]!;
+    const json = JSON.stringify(snapshot);
+    for (const secret of ["XY7K2M", "u1", "mem_u1", "mem_sam", "cloud1"]) {
+      expect(json, `snapshot must not contain ${secret}`).not.toContain(secret);
+    }
+    expect(fp).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("shows the public link once published", async () => {
+    seed({ publicToken: "tok0000000000000000001", publishedAt: 1_700_000_000_000 });
+    openSettings();
+    const link = screen.getByText(/\/s\/tok0000000000000000001$/);
+    // Scoped: the invite block above has its own "Copy link" button.
+    const block = within(link.closest(".field") as HTMLElement);
+    expect(block.getByRole("button", { name: /Copy link/ })).toBeTruthy();
+    expect(block.getByRole("button", { name: "Stop sharing" })).toBeTruthy();
+  });
+
+  it("warns and offers Republish when the group no longer matches the page", () => {
+    seed({
+      publicToken: "tok0000000000000000001",
+      publishedAt: 1_700_000_000_000,
+      publishedFingerprint: "0000000000000000", // deliberately not the current snapshot
+    });
+    openSettings();
+    expect(screen.getByText(/no longer matches this group/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Republish/ })).toBeTruthy();
+  });
+
+  it("stays quiet when the published page is up to date", async () => {
+    const { buildSnapshot, fingerprint } = await import("./lib/snapshot");
+    seed();
+    // Fingerprint the group exactly as the app will, so nothing is stale.
+    const g = cloudGroups[0]!;
+    g.publicToken = "tok0000000000000000001";
+    g.publishedAt = 1_700_000_000_000;
+    g.publishedFingerprint = fingerprint(buildSnapshot(g, false));
+
+    openSettings();
+    expect(screen.queryByText(/no longer matches this group/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Republish/ })).toBeNull();
+    expect(screen.getByText(/^Published /)).toBeTruthy();
+  });
+
+  it("stops sharing on request", async () => {
+    seed({ publicToken: "tok0000000000000000001", publishedAt: 1_700_000_000_000 });
+    openSettings();
+    fireEvent.click(screen.getByRole("button", { name: "Stop sharing" }));
+    await waitFor(() => expect(cloud.unpublishSettlement).toHaveBeenCalledOnce());
+  });
+
+  it("gives a non-owner member disclosure but no controls", () => {
+    seed({
+      ownerUid: "u2",
+      memberUids: ["u1", "u2"],
+      publicToken: "tok0000000000000000001",
+      publishedAt: 1_700_000_000_000,
+    });
+    openSettings();
+    expect(screen.getByText(/owner has published/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Publish settlement/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop sharing" })).toBeNull();
+    // Still the non-owner's destructive option, unchanged by this feature.
+    expect(screen.getByRole("button", { name: "Leave this group" })).toBeTruthy();
+  });
+
+  it("refuses to publish while offline", async () => {
+    const onLine = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    seed();
+    openSettings();
+    fireEvent.click(screen.getByRole("button", { name: /Publish settlement/ }));
+    await waitFor(() => expect(screen.getByText(/You're offline/)).toBeTruthy());
+    expect(cloud.publishSettlement).not.toHaveBeenCalled();
+    onLine.mockRestore();
   });
 });

@@ -7,7 +7,14 @@ import type { Group } from "../types";
  * Paths, not query params, which means the host must rewrite unknown paths to
  * index.html (see vercel.json) and the app must be built with an absolute base,
  * or nested URLs resolve assets against the wrong directory.
+ *
+ * One other shape exists: `/s/<token>` is a published settlement, rendered for
+ * signed-out strangers by a branch in main.tsx rather than inside <App/>.
  */
+
+/** Path prefix for a published settlement. No group may claim this slug. */
+export const PUBLIC_PREFIX = "s";
+const RESERVED_SLUGS = new Set<string>([PUBLIC_PREFIX]);
 
 /** Readable, URL-safe form of a group name. */
 export function slugify(name: string): string {
@@ -24,34 +31,61 @@ export function slugify(name: string): string {
  * URL-safe, so a clashing slug gains a short id suffix and an unusable one
  * (empty after slugifying, e.g. a name in a non-Latin script) falls back to the
  * id outright.
+ *
+ * A reserved slug is treated exactly like a clash, so a group named "S" gets a
+ * readable `/s-a1b4` instead of shadowing the published-settlement route.
  */
 export function groupSlug(group: Group, all: Group[]): string {
   const base = slugify(group.name);
   if (!base) return group.id;
-  const clashes = all.some((g) => g.id !== group.id && slugify(g.name) === base);
+  const clashes =
+    RESERVED_SLUGS.has(base) || all.some((g) => g.id !== group.id && slugify(g.name) === base);
   return clashes ? `${base}-${group.id.slice(-4)}` : base;
 }
 
-export interface Route {
+export interface GroupRoute {
   /** First path segment: a group slug, or an id. */
   slug: string | null;
   tab: string | null;
 }
 
+export type Route =
+  | ({ kind: "group" } & GroupRoute)
+  | { kind: "public"; token: string };
+
 export function readRoute(): Route {
   try {
     const parts = window.location.pathname.split("/").filter(Boolean);
+    // Before the legacy branch, so `/s/<token>?utm_source=x` can never be
+    // reinterpreted as a group route.
+    if (parts[0] === PUBLIC_PREFIX) return { kind: "public", token: parts[1] ?? "" };
     // Tolerate the older ?g=&t= form so existing links keep working.
     const q = new URLSearchParams(window.location.search);
     const legacyGroup = q.get("g");
     const legacyTab = q.get("t");
     return {
+      kind: "group",
       slug: parts[0] ?? legacyGroup ?? null,
       tab: parts[1] ?? legacyTab ?? null,
     };
   } catch {
-    return { slug: null, tab: null };
+    return { kind: "group", slug: null, tab: null };
   }
+}
+
+/** Position within the app. A published-settlement URL has none. */
+export function readGroupRoute(): GroupRoute {
+  const r = readRoute();
+  return r.kind === "group" ? { slug: r.slug, tab: r.tab } : { slug: null, tab: null };
+}
+
+export function publicSettlementPath(token: string): string {
+  return `/${PUBLIC_PREFIX}/${encodeURIComponent(token)}`;
+}
+
+/** Absolute link to a published settlement, for copying and sharing. */
+export function publicSettlementLink(token: string): string {
+  return `${window.location.origin}${publicSettlementPath(token)}`;
 }
 
 /** Which group a path segment refers to, if any. */
