@@ -24,7 +24,7 @@ import { EmptyState } from "./components/EmptyState";
 import { Toast } from "./components/Toast";
 import { Splash } from "./components/Splash";
 import { clearInviteFromUrl, readInviteFromUrl } from "./lib/invite";
-import { findGroupBySlug, readRoute, writeRoute } from "./lib/route";
+import { findGroupBySlug, readGroupRoute, writeRoute } from "./lib/route";
 import { useScrollLock, useViewportVars } from "./hooks/useViewport";
 
 export type TabKey = "transactions" | "balances" | "settle";
@@ -67,7 +67,7 @@ export function App() {
   const group = getActiveGroup();
   // Restore position from the URL on first render so a refresh stays put.
   const [tab, setTab] = useState<TabKey>(() => {
-    const t = readRoute().tab;
+    const t = readGroupRoute().tab;
     return isTab(t) ? t : "transactions";
   });
   /**
@@ -75,7 +75,7 @@ export function App() {
    * asynchronously over the Firestore snapshot, so the target may not exist on
    * first render — hold it until it does.
    */
-  const [pendingSlug, setPendingSlug] = useState<string | null>(() => readRoute().slug);
+  const [pendingSlug, setPendingSlug] = useState<string | null>(() => readGroupRoute().slug);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
 
@@ -238,7 +238,12 @@ export function App() {
       )}
       {modal.type === "account" && <AccountModal onClose={closeModal} />}
       {modal.type === "settings" && group && (
-        <SettingsModal group={group} user={user} onClose={closeModal} />
+        <SettingsModal
+          group={group}
+          greedy={state.settings.greedyMode}
+          user={user}
+          onClose={closeModal}
+        />
       )}
       {modal.type === "tx" && group && (
         <TransactionModal group={group} existing={modal.tx} user={user} onClose={closeModal} />

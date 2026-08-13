@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Modal } from "./Modal";
 import type { AuthUser, Group } from "../types";
 import * as repo from "../lib/repo";
@@ -6,15 +6,19 @@ import { importBackup } from "../lib/store";
 import { exportBackupFile } from "../lib/exporter";
 import { toast } from "../lib/toast";
 import { copyText, inviteLink } from "../lib/invite";
+import { publicSettlementLink } from "../lib/route";
+import { buildSnapshot, fingerprint } from "../lib/snapshot";
 import { Icon } from "./Icon";
 
 interface Props {
   group: Group;
+  /** Settlement mode the snapshot is built with, mirroring the Settle Up tab. */
+  greedy: boolean;
   user: AuthUser | null;
   onClose: () => void;
 }
 
-export function SettingsModal({ group, user, onClose }: Props) {
+export function SettingsModal({ group, greedy, user, onClose }: Props) {
   const [name, setName] = useState(group.name);
   const [currency, setCurrency] = useState(group.currency);
   const [newMember, setNewMember] = useState("");
@@ -29,6 +33,24 @@ export function SettingsModal({ group, user, onClose }: Props) {
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   const isOwner = !shared || (!!user?.uid && group.ownerUid === user.uid);
   const isMe = (memberUid?: string | null) => !!user?.uid && !!memberUid && memberUid === user.uid;
+
+  /**
+   * `shared &&` is required: isOwner is true for a solo group, and a solo group
+   * has no cloud document to publish.
+   */
+  const canPublish = shared && isOwner;
+  const published = shared && !!group.publicToken;
+  const snapshot = useMemo(
+    () => (canPublish ? buildSnapshot(group, greedy) : null),
+    [canPublish, group, greedy],
+  );
+  /**
+   * The published page no longer matches the group. Compared by content, not by
+   * timestamp: deleting a transaction LOWERS the group's max updatedAt, so a time
+   * comparison would miss deletions entirely.
+   */
+  const stale = published && !!snapshot && fingerprint(snapshot) !== group.publishedFingerprint;
+  const publicLink = group.publicToken ? publicSettlementLink(group.publicToken) : "";
 
   const run = async (fn: () => Promise<unknown>) => {
     try {
@@ -94,6 +116,67 @@ export function SettingsModal({ group, user, onClose }: Props) {
       });
     } catch {
       /* dismissed, or sharing unavailable — the copy buttons remain */
+    }
+  };
+
+  /**
+   * Firestore write promises resolve on SERVER acknowledgement, so offline they
+   * never settle — run() would stay busy forever. Worse, the group doc's fields
+   * apply optimistically from the local cache, so Settings would show a link
+   * whose public document was never written and which 404s for everyone.
+   */
+  const offline = () => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      toast("You're offline — this needs a connection so the link works for others.");
+      return true;
+    }
+    return false;
+  };
+
+  const publish = (republish: boolean) => {
+    if (offline()) return;
+    if (
+      !republish &&
+      !confirm(
+        `Publish "${group.name}"? Anyone with the link can see everyone's name and balance, ` +
+          `without signing in. Expenses, notes and the invite code are never included.`,
+      )
+    ) {
+      return;
+    }
+    void run(async () => {
+      await repo.publishSettlement(group, greedy);
+      // Deliberately not auto-copying: Safari drops clipboard permission once the
+      // user gesture has been consumed by the await.
+      toast(republish ? "Settlement republished" : "Settlement published");
+    });
+  };
+
+  const unpublish = () => {
+    if (offline()) return;
+    if (!confirm(`Stop sharing "${group.name}"? The link will stop working for everyone.`)) return;
+    void run(async () => {
+      await repo.unpublishSettlement(group);
+      toast("Link turned off");
+    });
+  };
+
+  const copyPublicLink = async () => {
+    if (!publicLink) return;
+    const ok = await copyText(publicLink);
+    toast(ok ? "Link copied" : publicLink);
+  };
+
+  const sharePublicLink = async () => {
+    if (!publicLink) return;
+    try {
+      await navigator.share({
+        title: group.name,
+        text: `Final settlement for "${group.name}"`,
+        url: publicLink,
+      });
+    } catch {
+      /* dismissed, or sharing unavailable — the copy button remains */
     }
   };
 
@@ -191,6 +274,82 @@ export function SettingsModal({ group, user, onClose }: Props) {
             Either works: the code is typed in by hand, the link opens the app and asks them to
             confirm. Anyone who signs in with Google can join as a member.
           </small>
+        </div>
+      )}
+
+      {canPublish && (
+        <div className="field">
+          <label>Final settlement</label>
+          {published ? (
+            <>
+              <code className="public-link">{publicLink}</code>
+              {stale ? (
+                <div className="warn-text">
+                  The published page no longer matches this group. Republish to update it.
+                </div>
+              ) : (
+                <small style={{ color: "var(--text-faint)", display: "block", marginTop: 6 }}>
+                  Published{" "}
+                  {group.publishedAt ? new Date(group.publishedAt).toLocaleString() : "recently"}.
+                </small>
+              )}
+              <div className="invite-actions">
+                <button className="btn btn-ghost" onClick={copyPublicLink} disabled={busy}>
+                  <Icon name="link" /> Copy link
+                </button>
+                {canShare && (
+                  <button className="btn btn-ghost" onClick={sharePublicLink} disabled={busy}>
+                    <Icon name="share" /> Share
+                  </button>
+                )}
+                {stale && (
+                  <button className="btn btn-ghost" onClick={() => publish(true)} disabled={busy}>
+                    <Icon name="save" /> Republish
+                  </button>
+                )}
+              </div>
+              <button
+                className="btn btn-danger btn-block"
+                onClick={unpublish}
+                disabled={busy}
+                style={{ marginTop: 8 }}
+              >
+                Stop sharing
+              </button>
+              <small style={{ color: "var(--text-faint)" }}>
+                A frozen snapshot — it won't change until you republish. Anyone who keeps the link
+                keeps seeing it, so turn it off if someone shouldn't have access.
+              </small>
+            </>
+          ) : (
+            <>
+              <div className="notice">
+                Publish a read-only page anyone can open — no app, no sign-in — showing who pays
+                whom and where everyone stands. Everyone's name and net balance become visible to
+                anyone with the link. Expenses, notes and the invite code are never included.
+              </div>
+              <button
+                className="btn btn-ghost btn-block"
+                onClick={() => publish(false)}
+                disabled={busy}
+                style={{ marginTop: 8 }}
+              >
+                <Icon name="share" /> Publish settlement
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Their name is on a public URL, so a member should be able to see that. */}
+      {shared && !isOwner && published && (
+        <div className="field">
+          <label>Final settlement</label>
+          <div className="notice">
+            The group owner has published this group's settlement. Anyone with the link can see
+            everyone's name and balance.
+          </div>
+          <code className="public-link">{publicLink}</code>
         </div>
       )}
 

@@ -12,6 +12,7 @@ import type { AuthUser, Group, Member, PaymentDraft, TxDraft } from "../types";
 import * as store from "./store";
 import * as cloud from "./cloud";
 import { uid } from "./finance";
+import { buildSnapshot, fingerprint } from "./snapshot";
 
 export type { RemoveMemberResult } from "./store";
 
@@ -69,6 +70,24 @@ export async function leaveGroup(group: Group, user: AuthUser): Promise<void> {
   if (!isShared(group)) return;
   await cloud.leaveSharedGroup(group, user.uid);
   store.deleteGroup(group.id);
+}
+
+/* ---------- published settlement ---------- */
+
+/**
+ * Freeze the current settlement and share it at /s/<token>. Returns the token.
+ * Republishing an already-published group reuses its token.
+ */
+export async function publishSettlement(group: Group, greedy: boolean): Promise<string> {
+  if (!isShared(group)) throw new Error("Only shared groups can be published.");
+  const snap = buildSnapshot(group, greedy);
+  const { token } = await cloud.publishSettlement(group, snap, fingerprint(snap));
+  return token;
+}
+
+export async function unpublishSettlement(group: Group): Promise<void> {
+  if (!isShared(group) || !group.publicToken) return;
+  await cloud.unpublishSettlement(group);
 }
 
 /* ---------- members ---------- */

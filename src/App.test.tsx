@@ -120,6 +120,9 @@ describe("App — offline mode (no Firebase)", () => {
     expect(document.querySelector(".invite-code")).toBeNull();
     // Backup/restore stays available for local data.
     expect(screen.getByText("Backup JSON")).toBeTruthy();
+    // No cloud document exists to publish. isOwner alone is true for a solo
+    // group, so the publish block is gated on `shared && isOwner`.
+    expect(screen.queryByRole("button", { name: /Publish settlement/ })).toBeNull();
   });
 
   it("opens settings by tapping the group name", () => {

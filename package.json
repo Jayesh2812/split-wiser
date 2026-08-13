@@ -9,7 +9,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "rules:deploy": "firebase deploy --only firestore:rules",
+    "rules:emulate": "firebase emulators:start --only firestore",
+    "firebase": "firebase"
   },
   "dependencies": {
     "firebase": "^12.17.0",
@@ -23,6 +26,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "firebase-tools": "^13.29.1",
     "jsdom": "^30.0.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",

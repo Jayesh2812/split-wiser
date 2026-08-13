@@ -5,5 +5,20 @@
       "source": "/((?!assets/|icons/|manifest.webmanifest|sw.js|registerSW.js|workbox-).*)",
       "destination": "/index.html"
     }
+  ],
+  "headers": [
+    {
+      "source": "/s/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
+      ]
+    }
   ]
 }

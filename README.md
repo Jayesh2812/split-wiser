@@ -64,7 +64,7 @@ That's enough for solo groups. To enable Google sign-in and shared groups:
 2. **Build → Authentication → Sign-in method → Google → Enable** (set a support email).
 3. **Build → Firestore Database → Create database** → *Production mode* → choose a region.
 4. **Firestore → Rules** → paste the contents of [`firestore.rules`](./firestore.rules) → **Publish**.
-   (Or with the CLI: `firebase deploy --only firestore:rules`.)
+   (Or with the CLI: `npm run rules:deploy`, configured by `firebase.json` / `.firebaserc`.)
 5. **Project settings → General → Your apps → Web app** → copy the config values.
 6. `cp .env.example .env.local` and fill them in, then restart the dev server.
 
@@ -75,12 +75,57 @@ The `VITE_FIREBASE_*` keys are public by design; they identify the project rathe
 ## Scripts
 
 ```bash
-npm run dev        # dev server
-npm test           # test suite (Vitest)
-npm run typecheck  # TypeScript
-npm run build      # production build into dist/ (generates the service worker)
-npm run preview    # serve the production build
+npm run dev           # dev server
+npm test              # test suite (Vitest)
+npm run typecheck     # TypeScript
+npm run build         # production build into dist/ (generates the service worker)
+npm run preview       # serve the production build
+npm run rules:deploy  # deploy firestore.rules
+npm run rules:emulate # local Firestore emulator (needs a Java runtime)
 ```
+
+## Published settlements
+
+The owner of a shared group can publish a frozen settlement summary to `/s/<token>`,
+readable by anyone with the link and no sign-in. Two collections back it:
+
+| collection | contents | client read |
+|---|---|---|
+| `public_settlements/{token}` | the allowlisted payload — **no `groupId`** | `get: if true`, `list: if false` |
+| `public_settlement_refs/{token}` | `{ groupId }` | denied; read only by `firestore.rules` |
+
+Three invariants hold this together, all enforced in `firestore.rules`:
+
+- **No `groupId` in the world-readable doc.** `isJoiningSelf()` lets any signed-in user
+  who knows a `groupId` add themselves to `memberUids`, which then grants read access to
+  every transaction and the invite code. The ref doc exists purely so the rules can
+  resolve the owner without publishing the id.
+- **`allow list: if false`.** `allow read` grants get *and* list; without the explicit
+  denial, one query returns every published settlement in the database.
+- **Delete ordering.** The published docs are authorised *through* the group doc, so
+  `deleteSharedGroup` removes `public_settlements` → `public_settlement_refs` →
+  `invites` → `groups`. Reversing it leaves a world-readable doc that can never be
+  deleted.
+
+`src/lib/snapshot.ts` builds the payload from an explicit allowlist — never by spreading
+the `Group` — and `src/lib/snapshot.test.ts` asserts the output contains no invite code,
+member id, uid, note or transaction.
+
+### Verifying the rules
+
+`npm test` covers the client. The rules themselves need the emulator (and so a Java
+runtime), or the **Firestore → Rules → Playground** in the console. Check that:
+
+1. unauthenticated `get public_settlements/{token}` → **allow**
+2. unauthenticated `list public_settlements` → **deny**
+3. a non-owner member `create` → **deny**
+4. the owner `create` with the ref doc present → **allow**; with it absent → **deny**
+5. the owner `create` with an extra `inviteCode` key → **deny** (proves `validSettlement()`)
+6. any client `get public_settlement_refs/{token}` → **deny**, while (4) still passes —
+   this is the assumption the whole design rests on: rules-side `get()` bypasses read rules
+7. a ref `update` that changes `groupId` → **deny**
+8. the owner `delete public_settlements/{token}` *after* deleting the group → **deny**
+   (pins the ordering requirement so nobody "simplifies" `deleteSharedGroup` later)
 
 ## Project layout
 

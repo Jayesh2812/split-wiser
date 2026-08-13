@@ -3,10 +3,12 @@ rules_version = '2';
 // Splitwiser security rules.
 //
 // Model:
-//   groups/{groupId}  - one doc per shared group; memberUids gates access
-//   invites/{code}    - tiny lookup doc mapping an invite code to a groupId
+//   groups/{groupId}               - one doc per shared group; memberUids gates access
+//   invites/{code}                 - tiny lookup doc mapping an invite code to a groupId
+//   public_settlements/{token}      - frozen, WORLD-READABLE settlement summary
+//   public_settlement_refs/{token}  - token -> groupId; readable by these rules only
 //
-// Deploy with:  firebase deploy --only firestore:rules
+// Deploy with:  npm run rules:deploy   (firebase deploy --only firestore:rules)
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -26,6 +28,44 @@ service cloud.firestore {
         && !(request.auth.uid in resource.data.memberUids)
         && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids', 'members']);
+    }
+
+    // The group a published-settlement token belongs to. Read from a document no
+    // client may read: rules-side get()/exists() are evaluated independently of
+    // the accessed document's own read rules.
+    function settlementGroupId(token) {
+      return get(/databases/$(database)/documents/public_settlement_refs/$(token)).data.groupId;
+    }
+
+    function isGroupOwner(gid) {
+      return signedIn()
+        && get(/databases/$(database)/documents/groups/$(gid)).data.ownerUid == request.auth.uid;
+    }
+
+    // The published payload allowlist, enforced here as well as in the client so
+    // no future refactor can leak inviteCode, memberUids, ownerUid, member ids,
+    // uids, transactions or notes into a world-readable document.
+    function validSettlement() {
+      return request.resource.data.keys().hasOnly(
+               ['v', 'name', 'currency', 'publishedAt', 'mode', 'totals', 'balances', 'transfers'])
+        && request.resource.data.keys().hasAll(
+               ['v', 'name', 'currency', 'publishedAt', 'mode', 'totals', 'balances', 'transfers'])
+        && request.resource.data.v == 1
+        && request.resource.data.mode in ['direct', 'greedy']
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.currency is string
+        && request.resource.data.currency.size() <= 8
+        // `is number`, not `is int`: a rejected publish surfaces as an opaque
+        // permission error, and this field is a display stamp, not a guard.
+        && request.resource.data.publishedAt is number
+        && request.resource.data.totals is map
+        // Generous sanity bounds on a world-readable document. buildSnapshot
+        // enforces the string limits above, so the client cannot trip these.
+        && request.resource.data.balances is list
+        && request.resource.data.balances.size() <= 500
+        && request.resource.data.transfers is list
+        && request.resource.data.transfers.size() <= 5000;
     }
 
     match /groups/{groupId} {
@@ -53,6 +93,38 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.createdBy == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groupName']);
+    }
+
+    // A frozen settlement summary the group owner chose to share. Readable by
+    // anyone holding the token, including signed-out visitors.
+    match /public_settlements/{token} {
+      // Anyone may fetch a token they were given...
+      allow get: if true;
+      // ...but nobody may enumerate them. `allow read` would grant list as well,
+      // and one query would return every published settlement in the database.
+      allow list: if false;
+
+      // Only the owner of the group behind this token may write it. The groupId
+      // comes from the ref doc, never from this world-readable one.
+      allow create, update: if isGroupOwner(settlementGroupId(token)) && validSettlement();
+      allow delete: if isGroupOwner(settlementGroupId(token));
+    }
+
+    // token -> groupId. Written by the owner, readable by NO client — only by the
+    // rules above. Deliberately not merged into public_settlements: a groupId in a
+    // world-readable doc would let any signed-in stranger satisfy isJoiningSelf()
+    // and join the group, which then grants read access to every transaction.
+    match /public_settlement_refs/{token} {
+      allow get, list: if false;
+
+      allow create: if isGroupOwner(request.resource.data.groupId)
+        && request.resource.data.keys().hasOnly(['groupId'])
+        && request.resource.data.groupId is string;
+      // Re-pointing a live token at another group is never legitimate, and would
+      // let the owner of group B overwrite group A's published page.
+      allow update: if isGroupOwner(resource.data.groupId)
+        && request.resource.data.groupId == resource.data.groupId;
+      allow delete: if isGroupOwner(resource.data.groupId);
     }
   }
 }
