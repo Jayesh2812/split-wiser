@@ -11,8 +11,15 @@
   --accent: #f5f5f5;
   --accent-2: #c4c4c4;
   --on-accent: #0a0a0a;
-  --pos: #ffffff;
-  --neg: #8f8f8f;
+  /* The only two hues in an otherwise greyscale palette (AVATAR_COLORS is a grey
+     ramp on purpose), so they are held at low chroma — about oklch(.79 .085 152)
+     and oklch(.74 .10 25). Enough to read as "green, I'm owed" and "red, I owe"
+     at a glance, not enough to make balances the one colourful screen. Both clear
+     7:1 on --bg-card, and neither is ever the only signal: every amount sits next
+     to a "gets back" / "owes" label, which is what a red-green colourblind reader
+     goes by. */
+  --pos: #91cba0;
+  --neg: #e3928b;
   --warn: #cfcfcf;
   --radius: 14px;
   --radius-sm: 10px;
