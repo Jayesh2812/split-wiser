@@ -20,7 +20,7 @@ import {
   removeMember,
   resetAll,
   setActiveGroup,
-  setGreedyMode,
+  updateGroup,
 } from "./store";
 
 beforeEach(() => resetAll());
@@ -66,13 +66,13 @@ describe("store", () => {
   it("round-trips a JSON backup", () => {
     const g = createGroup("Trip", "$");
     addMember(g.id, "Alex");
-    setGreedyMode(true);
+    updateGroup(g.id, { greedy: true });
     const backup = exportBackup();
     resetAll();
     expect(getState().groups.length).toBe(0);
     importBackup(backup);
     expect(getState().groups.length).toBe(1);
-    expect(getState().settings.greedyMode).toBe(true);
+    expect(getActiveGroup()!.greedy).toBe(true);
     expect(getActiveGroup()!.members[0]!.name).toBe("Alex");
   });
 

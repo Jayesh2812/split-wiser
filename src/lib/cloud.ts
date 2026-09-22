@@ -90,6 +90,9 @@ export async function createSharedGroup(
     ownerUid: user.uid,
     memberUids: [user.uid],
     inviteCode,
+    // Written explicitly rather than left absent: every member reads the mode
+    // off this document, so it should say what it is from the first write.
+    greedy: false,
   };
 
   await setDoc(ref, clean(group));
@@ -193,7 +196,7 @@ export async function joinByInviteCode(code: string, user: AuthUser): Promise<Jo
 
 export async function updateGroupMeta(
   groupId: string,
-  patch: Partial<Pick<Group, "name" | "currency">>,
+  patch: Partial<Pick<Group, "name" | "currency" | "greedy">>,
   inviteCode?: string | null,
 ) {
   await updateDoc(doc(db(), GROUPS, groupId), clean(patch));

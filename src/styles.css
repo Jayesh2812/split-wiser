@@ -289,6 +289,10 @@ body {
 .switch input:checked + .slider::before { background: var(--on-accent); }
 .switch input:checked + .slider { background: var(--accent); }
 .switch input:checked + .slider::before { transform: translateX(20px); }
+/* A switch you may not touch still has to show its state, so it fades rather
+   than greying out — the on/off reading is the whole point of leaving it. */
+.switch input:disabled + .slider { opacity: .45; }
+.switch input:disabled ~ * { cursor: default; }
 
 /* Export bar */
 .exportbar {
@@ -626,6 +630,9 @@ body {
 }
 .info-btn:hover, .info-btn[aria-expanded="true"] { color: var(--text); }
 .settle-mode .settle-hint { margin-top: 8px; }
+.settle-locked {
+  color: var(--text-faint); font-size: 12.5px; margin: 8px 0 0;
+}
 
 /* Settle-up filter — collapsed to a single bar until tapped. */
 .settle-filter { margin-bottom: 12px; }

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AuthUser, Group, Transfer } from "../types";
-import { memberName, myMemberId, settle } from "../lib/finance";
+import { isGroupAdmin, memberName, myMemberId, settle } from "../lib/finance";
 import { colorFor, initials, money } from "../lib/format";
-import { setGreedyMode } from "../lib/store";
+import * as repo from "../lib/repo";
 import { toast } from "../lib/toast";
 import { Icon } from "./Icon";
 
@@ -33,6 +33,9 @@ export function SettlePanel({ group, greedy, user, onRecord }: Props) {
   const [showInfo, setShowInfo] = useState(false);
   /** Only the person picker collapses — the side segment is one compact row. */
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** The write is a round-trip to Firestore in a shared group, so it can fail. */
+  const [saving, setSaving] = useState(false);
+  const canSetMode = isGroupAdmin(group, user?.uid);
   // A member removed while the tab was open would otherwise filter to nothing.
   const focused = group.members.some((m) => m.id === person) ? person : "all";
 
@@ -51,6 +54,23 @@ export function SettlePanel({ group, greedy, user, onRecord }: Props) {
       receiveCount: inc.length,
     };
   }, [plan, focused, role]);
+
+  const setMode = async (on: boolean) => {
+    // Not merely belt-and-braces over `disabled`: the rules reject the write for
+    // a non-owner anyway, so without this the only thing a stray change event
+    // could produce is a permission error nobody can act on.
+    if (!canSetMode) return;
+    setSaving(true);
+    try {
+      await repo.updateGroup(group, { greedy: on });
+      toast(on ? "Greedy settlement on" : "Direct settlement on");
+    } catch (e) {
+      console.error(e);
+      toast("Couldn't change the settlement mode.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const hint = greedy
     ? "Greedy: fewest possible payments. Balances are pooled, so who-paid-for-whom is not preserved — just the minimal set of transfers to zero everyone out."
@@ -77,14 +97,20 @@ export function SettlePanel({ group, greedy, user, onRecord }: Props) {
             <input
               type="checkbox"
               checked={greedy}
-              onChange={(e) => {
-                setGreedyMode(e.target.checked);
-                toast(e.target.checked ? "Greedy settlement on" : "Direct settlement on");
-              }}
+              disabled={!canSetMode || saving}
+              aria-describedby={canSetMode ? undefined : "settle-mode-locked"}
+              onChange={(e) => setMode(e.target.checked)}
             />
             <span className="slider" />
           </label>
         </div>
+        {/* Named rather than merely disabled: a switch that ignores you with no
+            explanation reads as a bug. */}
+        {!canSetMode && (
+          <p className="settle-locked" id="settle-mode-locked">
+            The group's admin sets this for everyone.
+          </p>
+        )}
         {showInfo && <p className="settle-hint">{hint}</p>}
       </div>
 

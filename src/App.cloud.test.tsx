@@ -393,3 +393,79 @@ describe("App — publishing a final settlement", () => {
     onLine.mockRestore();
   });
 });
+
+describe("App — who may set the settlement mode", () => {
+  /** Seed a shared group and open its Settle Up tab. */
+  const openSettle = (patch: Partial<Group> = {}) => {
+    cloudGroups.push({
+      id: "cloud1",
+      name: "Goa Trip",
+      currency: "₹",
+      createdAt: 0,
+      members: [
+        { id: "mem_u1", name: "Alex Doe", uid: "u1" },
+        { id: "mem_u2", name: "Sam", uid: "u2" },
+      ],
+      transactions: [],
+      kind: "shared",
+      ownerUid: "u1",
+      memberUids: ["u1", "u2"],
+      inviteCode: "XY7K2M",
+      ...patch,
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: "Settle Up" }));
+  };
+
+  const modeSwitch = () =>
+    document.querySelector<HTMLInputElement>(".settle-mode .switch input")!;
+
+  it("lets the owner toggle the mode and writes it to the group", async () => {
+    openSettle();
+    const box = modeSwitch();
+    expect(box.disabled).toBe(false);
+
+    fireEvent.click(box);
+    await waitFor(() => expect(cloud.updateGroupMeta).toHaveBeenCalledOnce());
+    const [groupId, patch] = vi.mocked(cloud.updateGroupMeta).mock.calls[0]!;
+    expect(groupId).toBe("cloud1");
+    expect(patch).toEqual({ greedy: true });
+  });
+
+  it("shows a member the mode but will not let them change it", () => {
+    openSettle({ ownerUid: "u2", greedy: true });
+    const box = modeSwitch();
+    expect(box.disabled).toBe(true);
+    // Still reports the group's mode — disabled must not mean uninformative.
+    expect(box.checked).toBe(true);
+    expect(screen.getByText("The group's admin sets this for everyone.")).toBeTruthy();
+  });
+
+  it("writes nothing when a member's click is ignored", () => {
+    openSettle({ ownerUid: "u2" });
+    fireEvent.click(modeSwitch());
+    expect(cloud.updateGroupMeta).not.toHaveBeenCalled();
+  });
+
+  it("gives every member the same plan regardless of their device preference", () => {
+    // The old device-wide toggle is on, but a shared group must ignore it.
+    localStorage.setItem(
+      "splitwiser.state.v1",
+      JSON.stringify({ schema: 1, activeGroupId: null, settings: { greedyMode: true }, groups: [] }),
+    );
+    openSettle({ ownerUid: "u2" });
+    expect(modeSwitch().checked).toBe(false);
+  });
+
+  it("leaves the owner free to set the mode on their own solo group", () => {
+    render(<App />);
+    fireEvent.click(screen.getByText("Create your first group"));
+    fireEvent.click(screen.getByText("Just me tracking"));
+    fireEvent.change(document.querySelector<HTMLTextAreaElement>("textarea")!, {
+      target: { value: "Alex, Sam" },
+    });
+    fireEvent.click(screen.getByText("Create group"));
+    fireEvent.click(screen.getByRole("tab", { name: "Settle Up" }));
+    expect(modeSwitch().disabled).toBe(false);
+  });
+});

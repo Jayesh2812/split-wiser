@@ -1,4 +1,4 @@
-import type { Group, Transaction, Transfer } from "../types";
+import type { Group, Settings, Transaction, Transfer } from "../types";
 
 /* Work in integer cents to avoid floating-point drift, format back at the edges. */
 export const toCents = (x: number): number => Math.round((Number(x) || 0) * 100);
@@ -36,6 +36,28 @@ export function nameForUid(g: Group, uid: string | null | undefined): string | n
 export function myMemberId(g: Group, uid: string | null | undefined): string | null {
   if (!uid) return null;
   return g.members.find((m) => m.uid === uid)?.id ?? null;
+}
+
+/**
+ * Who may change settings that apply to the whole group. A shared group answers
+ * to its owner; a local group has nobody else in it, so you are always its admin.
+ */
+export function isGroupAdmin(g: Group, uid: string | null | undefined): boolean {
+  if (g.kind !== "shared") return true;
+  return !!uid && g.ownerUid === uid;
+}
+
+/**
+ * The settlement mode in force for a group.
+ *
+ * A shared group never falls back to a device preference: the whole point of the
+ * setting living on the group is that every member computes the same plan, and a
+ * fallback would quietly reintroduce per-device answers. A local group has only
+ * one device, so it keeps honouring the old app-wide toggle until it is set.
+ */
+export function groupGreedy(g: Group, settings: Settings): boolean {
+  if (typeof g.greedy === "boolean") return g.greedy;
+  return g.kind === "shared" ? false : settings.greedyMode;
 }
 
 /** Group-currency units per unit of the transaction's currency. */

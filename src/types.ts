@@ -80,6 +80,13 @@ export interface Group {
 
   /** "local" (default, offline-only) or "shared" (Firestore-backed). */
   kind: GroupKind;
+  /**
+   * Settlement mode for this group: greedy (fewest transfers) or direct.
+   * In a shared group only the owner may change it, and it is part of the synced
+   * document so every member sees the same plan. Absent on groups last written
+   * before the setting moved here — see groupGreedy() for what that falls back to.
+   */
+  greedy?: boolean;
   /* ---- shared-group fields (undefined for local groups) ---- */
   ownerUid?: string | null;
   /** uids allowed to read/write this group — mirrors members[].uid. */
@@ -103,6 +110,12 @@ export interface Group {
 }
 
 export interface Settings {
+  /**
+   * Legacy device-wide settlement mode, from before `greedy` moved onto the
+   * group. Still READ as the fallback for local groups that predate the move, so
+   * upgrading does not silently flip anyone from greedy to direct; nothing writes
+   * it any more.
+   */
   greedyMode: boolean;
 }
 

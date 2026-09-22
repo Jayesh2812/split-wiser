@@ -243,7 +243,7 @@ export function clearSharedGroups() {
   });
 }
 
-export function updateGroup(id: string, patch: Partial<Pick<Group, "name" | "currency">>) {
+export function updateGroup(id: string, patch: Partial<Pick<Group, "name" | "currency" | "greedy">>) {
   withGroup(id, (g) => ({ ...g, ...patch }));
 }
 
@@ -441,11 +441,6 @@ export function updateTransaction(groupId: string, txId: string, draft: TxDraft)
 
 export function deleteTransaction(groupId: string, txId: string) {
   withGroup(groupId, (g) => ({ ...g, transactions: g.transactions.filter((t) => t.id !== txId) }));
-}
-
-/* ---------- settings ---------- */
-export function setGreedyMode(on: boolean) {
-  commit({ ...state, settings: { ...state.settings, greedyMode: on } });
 }
 
 /* ---------- backup / restore ---------- */

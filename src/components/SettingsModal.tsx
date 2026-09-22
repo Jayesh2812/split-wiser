@@ -8,6 +8,7 @@ import { toast } from "../lib/toast";
 import { copyText, inviteLink } from "../lib/invite";
 import { publicSettlementLink } from "../lib/route";
 import { buildSnapshot, fingerprint } from "../lib/snapshot";
+import { isGroupAdmin } from "../lib/finance";
 import { Icon } from "./Icon";
 
 interface Props {
@@ -31,7 +32,7 @@ export function SettingsModal({ group, greedy, user, onClose }: Props) {
 
   const shared = group.kind === "shared";
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-  const isOwner = !shared || (!!user?.uid && group.ownerUid === user.uid);
+  const isOwner = isGroupAdmin(group, user?.uid);
   const isMe = (memberUid?: string | null) => !!user?.uid && !!memberUid && memberUid === user.uid;
 
   /**

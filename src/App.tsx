@@ -3,7 +3,7 @@ import { useAppState } from "./hooks/useStore";
 import { useAuthReady, useAuthUser } from "./hooks/useAuth";
 import { useCloudSync } from "./hooks/useCloudSync";
 import { getActiveGroup, setActiveGroup } from "./lib/store";
-import { isPayment } from "./lib/finance";
+import { groupGreedy, isPayment } from "./lib/finance";
 import * as repo from "./lib/repo";
 import { toast } from "./lib/toast";
 import type { GroupKind, Transaction, Transfer } from "./types";
@@ -65,6 +65,8 @@ export function App() {
   useViewportVars();
 
   const group = getActiveGroup();
+  /** Settlement mode for the group on screen — its own, or the legacy fallback. */
+  const greedy = group ? groupGreedy(group, state.settings) : false;
   // Restore position from the URL on first render so a refresh stays put.
   const [tab, setTab] = useState<TabKey>(() => {
     const t = readGroupRoute().tab;
@@ -174,7 +176,7 @@ export function App() {
         {group && tab === "settle" && (
           <SettlePanel
             group={group}
-            greedy={state.settings.greedyMode}
+            greedy={greedy}
             user={user}
             onRecord={(t: Transfer) =>
               setModal({ type: "payment", from: t.from, to: t.to, suggested: t.amount })
@@ -183,7 +185,7 @@ export function App() {
         )}
       </main>
 
-      {group && <ExportBar group={group} greedy={state.settings.greedyMode} />}
+      {group && <ExportBar group={group} greedy={greedy} />}
 
       {drawerOpen && (
         <GroupDrawer
@@ -240,7 +242,7 @@ export function App() {
       {modal.type === "settings" && group && (
         <SettingsModal
           group={group}
-          greedy={state.settings.greedyMode}
+          greedy={greedy}
           user={user}
           onClose={closeModal}
         />

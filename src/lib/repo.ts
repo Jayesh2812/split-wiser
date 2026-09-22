@@ -51,7 +51,7 @@ export async function lookupInviteCode(code: string) {
 
 export async function updateGroup(
   group: Group,
-  patch: Partial<Pick<Group, "name" | "currency">>,
+  patch: Partial<Pick<Group, "name" | "currency" | "greedy">>,
 ): Promise<void> {
   if (isShared(group)) await cloud.updateGroupMeta(group.id, patch, group.inviteCode);
   else store.updateGroup(group.id, patch);
@@ -234,7 +234,6 @@ export const {
   getActiveGroup,
   getGroup,
   setActiveGroup,
-  setGreedyMode,
   exportBackup,
   importBackup,
   resetAll,

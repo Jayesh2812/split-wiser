@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { Group, Transaction } from "../types";
 import {
   computeBalances,
+  groupGreedy,
+  isGroupAdmin,
   txPayers,
   txTotalInGroup,
   groupTotals,
@@ -331,5 +333,43 @@ describe("foreign currency", () => {
       transactions: [tx({ amount: 10, currency: "EUR", rate: 90, paidBy: A, split: { type: "equal", among: [A], shares: {} } })],
     };
     expect(approx(groupTotals(g).total, 900)).toBe(true);
+  });
+});
+
+describe("settlement mode ownership", () => {
+  const shared = (patch: Partial<Group> = {}): Group => ({
+    ...makeGroup(),
+    kind: "shared",
+    ownerUid: "u1",
+    memberUids: ["u1", "u2"],
+    ...patch,
+  });
+
+  it("makes you the admin of your own local group", () => {
+    expect(isGroupAdmin(makeGroup(), null)).toBe(true);
+    expect(isGroupAdmin(makeGroup(), "anyone")).toBe(true);
+  });
+
+  it("limits a shared group to its owner", () => {
+    expect(isGroupAdmin(shared(), "u1")).toBe(true);
+    expect(isGroupAdmin(shared(), "u2")).toBe(false);
+    expect(isGroupAdmin(shared(), null)).toBe(false);
+  });
+
+  it("prefers the group's own setting over the device preference", () => {
+    expect(groupGreedy({ ...makeGroup(), greedy: true }, { greedyMode: false })).toBe(true);
+    expect(groupGreedy(shared({ greedy: true }), { greedyMode: false })).toBe(true);
+    expect(groupGreedy(shared({ greedy: false }), { greedyMode: true })).toBe(false);
+  });
+
+  it("falls back to the old device toggle for a local group that has none", () => {
+    expect(groupGreedy(makeGroup(), { greedyMode: true })).toBe(true);
+    expect(groupGreedy(makeGroup(), { greedyMode: false })).toBe(false);
+  });
+
+  it("never lets a device preference decide a shared group's mode", () => {
+    // Otherwise two members on two devices would compute two different plans,
+    // which is the whole reason the setting moved onto the group.
+    expect(groupGreedy(shared(), { greedyMode: true })).toBe(false);
   });
 });
