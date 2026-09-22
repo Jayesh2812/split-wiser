@@ -118,30 +118,38 @@ body {
 /* Toolbar */
 .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
 .search {
-  flex: 1; background: var(--bg-input); border: 1px solid var(--line);
+  /* min-width: 0 is load-bearing. A flex item defaults to min-width: auto, and
+     an <input> reports an intrinsic width of ~20 characters, so the field refuses
+     to shrink and shoves its neighbours off the screen instead. That intrinsic
+     width scales with the FONT, so a phone with Android's text size turned up
+     breaks at 360px where a default phone survives — the Add button wrapped to
+     two lines and hung off the edge. */
+  flex: 1; min-width: 0;
+  background: var(--bg-input); border: 1px solid var(--line);
   color: var(--text); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 16px;
 }
 .search::placeholder { color: var(--text-faint); }
+/* The two buttons keep their size; the search field absorbs the difference. */
+.toolbar .btn { flex: none; white-space: nowrap; }
 
 /* Transaction filters — a square toggle beside the search field, and the panel
    it reveals. Collapsed by default so the tab still opens on the list itself. */
 .filter-btn {
-  position: relative; flex: none; width: 44px;
-  display: grid; place-items: center;
+  /* Square while idle; grows just enough to seat the count when filters are on.
+     The count sits INSIDE rather than floating over the corner — at 320px an
+     overhanging badge lands in the 8px gap and collides with the Add button. */
+  flex: none; min-width: 44px; padding: 0 12px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--radius-sm);
   color: var(--text-dim); cursor: pointer;
 }
 .filter-btn:active { transform: translateY(1px); }
 .filter-btn[aria-expanded="true"], .filter-btn.on { color: var(--text); border-color: var(--line-strong); }
 .filter-btn .filter-count {
-  position: absolute; top: -6px; right: -6px;
-  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
   background: var(--accent); color: var(--on-accent);
   font-size: 10.5px; font-weight: 700; line-height: 1;
   display: grid; place-items: center;
-  /* Ringed in the page colour so the badge reads as a badge, not a smudge on
-     the button's own border. */
-  border: 2px solid var(--bg);
 }
 
 .tx-filter { margin-bottom: 12px; animation: fade .18s ease; }
