@@ -38,9 +38,15 @@ export function MembersPanel({ group, user, onLeft }: Props) {
   const [mergeFrom, setMergeFrom] = useState<string | null>(null);
 
   const shared = group.kind === "shared";
-  /** Members holding an account whose address nobody has yet — what the lookup is for. */
-  const missingEmails = shared ? group.members.filter((m) => m.uid && !m.email).length : 0;
   const isOwner = isGroupAdmin(group, user?.uid);
+  /**
+   * Members holding an account whose address nobody has yet — what the lookup is
+   * for. Offered to the group's owner alone, like every other group-wide action;
+   * the endpoint enforces the same rule, so hiding it here is courtesy, not
+   * security.
+   */
+  const missingEmails =
+    shared && isOwner ? group.members.filter((m) => m.uid && !m.email).length : 0;
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   const isMe = (memberUid?: string | null) => !!user?.uid && !!memberUid && memberUid === user.uid;
 
@@ -152,9 +158,11 @@ export function MembersPanel({ group, user, onLeft }: Props) {
           ? "Email lookup isn't set up on this deployment — type them in instead."
           : res.reason === "auth"
             ? "Sign in again and retry."
-            : res.reason === "not-a-member"
-              ? "Only a member of this group can do that."
-              : "Couldn't fetch emails.",
+            : res.reason === "not-admin"
+              ? "Only the group's owner can fetch emails."
+              : res.reason === "not-a-member"
+                ? "Only a member of this group can do that."
+                : "Couldn't fetch emails.",
       );
     });
 

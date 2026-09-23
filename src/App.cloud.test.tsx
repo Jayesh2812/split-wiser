@@ -507,6 +507,48 @@ describe("App — the Members tab", () => {
     vi.unstubAllGlobals();
   });
 
+  it("offers the lookup to the owner alone", () => {
+    seed({
+      ownerUid: "u2", // signed-in user u1 is an ordinary member here
+      members: [
+        { id: "mem_u1", name: "Alex Doe", uid: "u1", email: "alex@example.com" },
+        { id: "mem_u2", name: "Priya", uid: "u2" },
+      ],
+      memberUids: ["u1", "u2"],
+    });
+    openMembers();
+    expect(screen.queryByRole("button", { name: /Fetch emails/ })).toBeNull();
+    expect(screen.queryByText(/hasn't shared an email yet/)).toBeNull();
+  });
+
+  it("explains a refusal aimed at a non-owner", async () => {
+    seed({
+      members: [
+        { id: "mem_u1", name: "Alex Doe", uid: "u1", email: "alex@example.com" },
+        { id: "mem_u2", name: "Priya", uid: "u2" },
+      ],
+      memberUids: ["u1", "u2"],
+    });
+    // The endpoint is the thing that actually enforces it, so the UI has to
+    // handle being told no even when it believed otherwise.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: false, reason: "not-admin" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          }),
+      ),
+    );
+    openMembers();
+    fireEvent.click(screen.getByRole("button", { name: /Fetch emails/ }));
+    await waitFor(() =>
+      expect(screen.getByText("Only the group's owner can fetch emails.")).toBeTruthy(),
+    );
+    vi.unstubAllGlobals();
+  });
+
   it("hides the lookup once everyone's address is in", () => {
     seed();
     openMembers();

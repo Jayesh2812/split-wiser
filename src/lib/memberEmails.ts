@@ -13,7 +13,7 @@ export type FetchEmailsResult =
   | { ok: true; filled: number }
   /** No endpoint deployed, or it has no service account — the feature is simply off here. */
   | { ok: false; reason: "unavailable" }
-  | { ok: false; reason: "auth" | "not-a-member" | "failed" };
+  | { ok: false; reason: "auth" | "not-a-member" | "not-admin" | "failed" };
 
 const ENDPOINT = "/api/member-emails";
 
@@ -43,7 +43,13 @@ export async function fetchMemberEmails(groupId: string): Promise<FetchEmailsRes
   const isJson = res.headers.get("content-type")?.includes("application/json") ?? false;
   if (res.status === 404 || res.status === 501 || !isJson) return { ok: false, reason: "unavailable" };
   if (res.status === 401) return { ok: false, reason: "auth" };
-  if (res.status === 403) return { ok: false, reason: "not-a-member" };
+  if (res.status === 403) {
+    // Both are refusals, but only one of them is worth explaining to the person
+    // looking at the screen, so they are not collapsed into one reason.
+    const body = await res.json().catch(() => null);
+    const reason = (body as { reason?: string } | null)?.reason;
+    return { ok: false, reason: reason === "not-admin" ? "not-admin" : "not-a-member" };
+  }
 
   try {
     const body = (await res.json()) as {

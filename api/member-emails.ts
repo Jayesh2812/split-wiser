@@ -11,10 +11,12 @@
  * server. This is that server — small enough to run on a free Vercel function.
  *
  * WHAT IT WILL NOT DO. It is not a directory: it answers only for one group, and
- * only for a caller who is already a member of it and could therefore see those
- * people anyway. An unverified token, or a caller outside the group, gets
- * nothing. Uids are read from the GROUP DOCUMENT, never from the request body,
- * so a member cannot use their own group as a lens onto arbitrary accounts.
+ * only for that group's OWNER — the same bar as any other group-wide change (see
+ * isGroupAdmin). An unverified token, an ordinary member, or a caller outside the
+ * group gets nothing. Uids are read from the GROUP DOCUMENT, never from the
+ * request body, so nobody can use their own group as a lens onto arbitrary
+ * accounts. The owner check lives here and not only in the UI: hiding a button
+ * hides nothing from anyone willing to call the endpoint directly.
  *
  * NOTHING IS IMPORTED AT MODULE SCOPE. firebase-admin is 30MB of lazily-required
  * submodules, and if the platform fails to package one of them a top-level
@@ -180,11 +182,20 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       res.status(404).json({ ok: false, reason: "no-group" });
       return;
     }
-    const group = snap.data() as { members?: Member[]; memberUids?: string[] };
+    const group = snap.data() as {
+      members?: Member[];
+      memberUids?: string[];
+      ownerUid?: string | null;
+    };
 
-    // The membership check. Mirrors isMember() in firestore.rules.
+    // Membership first, so a stranger cannot tell an existing group from a
+    // missing one, and then ownership. Mirrors isGroupAdmin() in finance.ts.
     if (!(group.memberUids ?? []).includes(caller.uid)) {
       res.status(403).json({ ok: false, reason: "not-a-member" });
+      return;
+    }
+    if (group.ownerUid !== caller.uid) {
+      res.status(403).json({ ok: false, reason: "not-admin" });
       return;
     }
 

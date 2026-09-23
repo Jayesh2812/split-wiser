@@ -69,6 +69,11 @@ describe("fetchMemberEmails", () => {
     expect(await fetchMemberEmails("g1")).toEqual({ ok: false, reason: "not-a-member" });
   });
 
+  it("keeps an owner-only refusal distinct from an outsider's", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply(403, { ok: false, reason: "not-admin" })));
+    expect(await fetchMemberEmails("g1")).toEqual({ ok: false, reason: "not-admin" });
+  });
+
   it("does not call the endpoint when nobody is signed in", async () => {
     h.auth = { currentUser: null };
     const f = vi.fn();

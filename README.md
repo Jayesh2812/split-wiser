@@ -115,7 +115,7 @@ curl -X POST http://localhost:5173/api/member-emails \
 
 Tokens last an hour; reload the app for a fresh one. Expect `{"ok":true,"filled":N}`, `501` when the service account is missing, `403` if you are not in that group, and `401` for a stale token.
 
-It answers for one group at a time, only to a caller whose ID token verifies *and* who is already in that group's `memberUids`, and it reads the uids from the group document rather than the request — so it cannot be used as a directory of arbitrary accounts. Deployments without the variable report themselves unconfigured and the app falls back to hand-typed addresses; the button and the rest of the tab work the same either way.
+It answers for one group at a time, only to a caller whose ID token verifies *and* who **owns** that group — the same bar as any other group-wide change. It reads the uids from the group document rather than the request, so it cannot be used as a directory of arbitrary accounts. Ordinary members are refused with `not-admin`; the button is hidden for them too, but that is courtesy, since hiding a button hides nothing from anyone willing to call the endpoint directly. Deployments without the variable report themselves unconfigured and the app falls back to hand-typed addresses; the button and the rest of the tab work the same either way.
 
 ## Scripts
 
