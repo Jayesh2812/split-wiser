@@ -267,6 +267,15 @@ export function renameMember(groupId: string, memberId: string, name: string) {
   }));
 }
 
+/** Set (or, with an empty string, clear) how to reach a member. */
+export function setMemberEmail(groupId: string, memberId: string, email: string) {
+  const value = email.trim();
+  withGroup(groupId, (g) => ({
+    ...g,
+    members: g.members.map((m) => (m.id === memberId ? { ...m, email: value || null } : m)),
+  }));
+}
+
 /**
  * Fold `fromId` into `intoId`, rewriting every reference so no history is lost.
  *
@@ -313,7 +322,18 @@ export function mergeMembers(g: Group, fromId: string, intoId: string): Group {
     // Keep the surviving slot, but prefer a real name over a placeholder.
     members: g.members
       .filter((m) => m.id !== fromId)
-      .map((m) => (m.id === intoId ? { ...m, name: m.name || from.name } : m)),
+      .map((m) =>
+        m.id === intoId
+          ? {
+              ...m,
+              name: m.name || from.name,
+              // The duplicate often holds the contact detail the survivor lacks
+              // — typically a name-only slot folded into a Google account, or
+              // the reverse. Only written when one of the two actually has one.
+              ...(m.email || from.email ? { email: m.email || from.email } : {}),
+            }
+          : m,
+      ),
     memberUids: (g.memberUids ?? []).filter((u) => !from.uid || u !== from.uid),
     transactions,
   };

@@ -41,7 +41,9 @@ export default defineConfig({
         // shell: a shell built before that route existed has no public branch, so
         // <App/> would mount and writeRoute would erase the token from the URL.
         // autoUpdate only fixes that on the NEXT load, which is one too late.
-        navigateFallbackDenylist: [/^\/s\//],
+        // /api/ joins it for the same reason: the serverless endpoints are not
+        // part of the app shell and must always reach the network.
+        navigateFallbackDenylist: [/^\/s\//, /^\/api\//],
         cleanupOutdatedCaches: true,
       },
       devOptions: {

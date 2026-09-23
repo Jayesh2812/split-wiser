@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "dev:api": "npx --yes vercel dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "rules:deploy": "firebase deploy --only firestore:rules",
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "firebase": "^12.17.0",
+    "firebase-admin": "^14.4.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -23,6 +25,7 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.6.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

@@ -11,6 +11,15 @@ export interface Member {
    * Only set in shared groups; always undefined in solo groups.
    */
   uid?: string | null;
+  /**
+   * How to reach this person. Filled in from the Google account when they join a
+   * shared group, and typed in by hand for a name-only participant.
+   *
+   * Visible to every member of the group, so it must never leave it: the
+   * published settlement is built from an allowlist (see snapshot.ts) and the
+   * CSV/PDF exports carry names only.
+   */
+  email?: string | null;
 }
 
 export interface Split {

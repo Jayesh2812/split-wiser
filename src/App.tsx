@@ -11,6 +11,7 @@ import { TopBar } from "./components/TopBar";
 import { TransactionsPanel } from "./components/TransactionsPanel";
 import { BalancesPanel } from "./components/BalancesPanel";
 import { SettlePanel } from "./components/SettlePanel";
+import { MembersPanel } from "./components/MembersPanel";
 import { ExportBar } from "./components/ExportBar";
 import { GroupDrawer } from "./components/GroupDrawer";
 import { GroupModal } from "./components/GroupModal";
@@ -27,7 +28,7 @@ import { clearInviteFromUrl, readInviteFromUrl } from "./lib/invite";
 import { findGroupBySlug, readGroupRoute, writeRoute } from "./lib/route";
 import { useScrollLock, useViewportVars } from "./hooks/useViewport";
 
-export type TabKey = "transactions" | "balances" | "settle";
+export type TabKey = "transactions" | "balances" | "settle" | "members";
 type ModalState =
   | { type: "none" }
   | { type: "chooseKind" }
@@ -42,6 +43,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "transactions", label: "Transactions" },
   { key: "balances", label: "Balances" },
   { key: "settle", label: "Settle Up" },
+  { key: "members", label: "Members" },
 ];
 
 const isTab = (v: string | null): v is TabKey => TABS.some((t) => t.key === v);
@@ -127,6 +129,16 @@ export function App() {
     });
   }, [group?.id]);
 
+  // Publish our own email onto our member slot, so the rest of the group can see
+  // it. Deliberately here rather than on the Members tab: a browser can only read
+  // the address of whoever is signed in on it, so every member's row stays blank
+  // for everyone else until that member's own device writes it — and most people
+  // never open the Members tab. Silent on failure: offline simply queues.
+  useEffect(() => {
+    if (!group) return;
+    void repo.syncMyMemberEmail(group, user).catch(() => {});
+  }, [group?.id, user?.uid, user?.email]);
+
   // Hold the whole UI back until Firebase has restored the session — otherwise the
   // signed-out home screen flashes before the user's groups arrive.
   if (!authReady) return <Splash />;
@@ -169,10 +181,13 @@ export function App() {
             group={group}
             onAdd={() => setModal({ type: "tx", tx: null })}
             onEdit={(tx) => setModal(openForTx(tx))}
-            onNeedMembers={() => setModal({ type: "settings" })}
+            onNeedMembers={() => setTab("members")}
           />
         )}
         {group && tab === "balances" && <BalancesPanel group={group} user={user} />}
+        {group && tab === "members" && (
+          <MembersPanel group={group} user={user} onLeft={() => setTab("transactions")} />
+        )}
         {group && tab === "settle" && (
           <SettlePanel
             group={group}
@@ -245,6 +260,10 @@ export function App() {
           greedy={greedy}
           user={user}
           onClose={closeModal}
+          onManageMembers={() => {
+            closeModal();
+            setTab("members");
+          }}
         />
       )}
       {modal.type === "tx" && group && (

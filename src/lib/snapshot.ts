@@ -50,7 +50,7 @@ const norm = (n: number): number => (n === 0 ? 0 : n);
  * member id -> display name, unique within the snapshot. Duplicates get
  * " (2)", " (3)"… so a name remains a valid key without emitting any member id.
  *
- * Independent of members[] order: renameCloudMember is arrayRemove + arrayUnion,
+ * Independent of members[] order: replaceCloudMember is arrayRemove + arrayUnion,
  * which moves the renamed member to the end of the array.
  */
 export function displayNames(g: Group): Record<string, string> {

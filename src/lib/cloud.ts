@@ -77,7 +77,7 @@ export async function createSharedGroup(
 ): Promise<Group> {
   const ref = doc(collection(db(), GROUPS));
   const inviteCode = makeInviteCode();
-  const me: Member = { id: `mem_${user.uid}`, name: user.name, uid: user.uid };
+  const me: Member = { id: `mem_${user.uid}`, name: user.name, uid: user.uid, email: user.email };
 
   const group: Group = {
     id: ref.id,
@@ -180,7 +180,7 @@ export async function joinByInviteCode(code: string, user: AuthUser): Promise<Jo
       }
     }
 
-    const me: Member = { id: `mem_${user.uid}`, name: user.name, uid: user.uid };
+    const me: Member = { id: `mem_${user.uid}`, name: user.name, uid: user.uid, email: user.email };
     await updateDoc(gref, {
       memberUids: arrayUnion(user.uid),
       members: arrayUnion(clean(me)),
@@ -303,7 +303,13 @@ export async function mergeCloudMembers(merged: Group) {
   });
 }
 
-export async function renameCloudMember(groupId: string, prev: Member, next: Member) {
+/**
+ * Swap one member object for another — a rename, or an email being filled in.
+ *
+ * arrayRemove matches the WHOLE object, so `prev` must be exactly what the
+ * document holds; pass the member straight out of the synced group.
+ */
+export async function replaceCloudMember(groupId: string, prev: Member, next: Member) {
   await updateDoc(doc(db(), GROUPS, groupId), {
     members: arrayRemove(clean(prev)),
   });

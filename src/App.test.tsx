@@ -137,32 +137,59 @@ describe("App — offline mode (no Firebase)", () => {
   it("requires two steps to remove a member", async () => {
     render(<App />);
     createSoloGroup("Trip", "Alex\nSam");
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Members" }));
 
-    const chipFor = (name: string) =>
-      [...document.querySelectorAll<HTMLElement>(".member-chip")].find((c) =>
+    const rowFor = (name: string) =>
+      [...document.querySelectorAll<HTMLElement>(".member-row")].find((c) =>
         c.textContent?.includes(name),
       );
 
     // First click only arms the confirmation — Sam is still a member.
-    fireEvent.click(within(chipFor("Sam")!).getByRole("button", { name: "Remove" }));
-    expect(screen.getByText("Remove Sam?")).toBeTruthy();
+    fireEvent.click(within(rowFor("Sam")!).getByRole("button", { name: "Remove Sam" }));
+    expect(within(rowFor("Sam")!).getByText("Remove?")).toBeTruthy();
     expect(screen.getByText(/2 members/)).toBeTruthy();
 
     // Backing out leaves the member alone.
     fireEvent.click(
-      within(chipFor("Sam")!).getByRole("button", { name: "Keep this member" }),
+      within(rowFor("Sam")!).getByRole("button", { name: "Keep this member" }),
     );
-    expect(screen.queryByText("Remove Sam?")).toBeNull();
+    expect(screen.queryByText("Remove?")).toBeNull();
     expect(screen.getByText(/2 members/)).toBeTruthy();
 
     // Confirming actually removes.
-    fireEvent.click(within(chipFor("Sam")!).getByRole("button", { name: "Remove" }));
+    fireEvent.click(within(rowFor("Sam")!).getByRole("button", { name: "Remove Sam" }));
     fireEvent.click(
-      within(chipFor("Sam")!).getByRole("button", { name: "Confirm removal" }),
+      within(rowFor("Sam")!).getByRole("button", { name: "Confirm removal" }),
     );
-    await waitFor(() => expect(chipFor("Sam")).toBeUndefined());
+    await waitFor(() => expect(rowFor("Sam")).toBeUndefined());
     expect(screen.getByText(/1 members/)).toBeTruthy();
+  });
+
+  it("renames a member and records an email for a name-only person", async () => {
+    render(<App />);
+    createSoloGroup("Trip", "Alex\nSam");
+    fireEvent.click(screen.getByRole("tab", { name: "Members" }));
+
+    const rowFor = (name: string) =>
+      [...document.querySelectorAll<HTMLElement>(".member-row")].find((c) =>
+        c.textContent?.includes(name),
+      );
+
+    fireEvent.click(within(rowFor("Sam")!).getByRole("button", { name: "Rename Sam" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Samir" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(rowFor("Samir")).toBeTruthy());
+
+    fireEvent.click(
+      within(rowFor("Samir")!).getByRole("button", { name: "Add email for Samir" }),
+    );
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.getByText("sam@example.com")).toBeTruthy());
+    expect(getState().groups[0]!.members.find((m) => m.name === "Samir")!.email).toBe(
+      "sam@example.com",
+    );
   });
 
   it("records a partial payment, then the remainder, from the Settle Up tab", async () => {
@@ -377,19 +404,19 @@ describe("App — offline mode (no Firebase)", () => {
     createSoloGroup("Trip", "Alex\nSam\nSam");
     await addExpense("Dinner", "90");
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    const chips = () => [...document.querySelectorAll<HTMLElement>(".member-chip")];
-    expect(chips().length).toBe(3);
+    fireEvent.click(screen.getByRole("tab", { name: "Members" }));
+    const rows = () => [...document.querySelectorAll<HTMLElement>(".member-row")];
+    expect(rows().length).toBe(3);
 
     // Fold the second Sam into the first.
-    const dupes = chips().filter((c) => c.textContent?.includes("Sam"));
+    const dupes = rows().filter((c) => c.textContent?.includes("Sam"));
     fireEvent.click(within(dupes[1]!).getByRole("button", { name: /^Merge/ }));
     const options = document.querySelector(".merge-options") as HTMLElement;
     fireEvent.click(within(options).getByRole("button", { name: "Sam" }));
 
-    await waitFor(() => expect(chips().length).toBe(2));
+    await waitFor(() => expect(rows().length).toBe(2));
     // The expense survived the merge rather than being dropped.
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("tab", { name: "Transactions" }));
     expect(screen.getByText("Dinner")).toBeTruthy();
     expect(screen.getByText(/2 members/)).toBeTruthy();
   });

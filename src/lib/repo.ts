@@ -138,10 +138,43 @@ export async function renameMember(group: Group, memberId: string, name: string)
   if (isShared(group)) {
     const prev = group.members.find((x) => x.id === memberId);
     if (!prev) return;
-    await cloud.renameCloudMember(group.id, prev, { ...prev, name: name.trim() });
+    await cloud.replaceCloudMember(group.id, prev, { ...prev, name: name.trim() });
   } else {
     store.renameMember(group.id, memberId, name);
   }
+}
+
+/** Set, or with an empty string clear, a member's email. */
+export async function setMemberEmail(
+  group: Group,
+  memberId: string,
+  email: string,
+): Promise<void> {
+  const value = email.trim();
+  if (isShared(group)) {
+    const prev = group.members.find((x) => x.id === memberId);
+    if (!prev) return;
+    await cloud.replaceCloudMember(group.id, prev, { ...prev, email: value || null });
+  } else {
+    store.setMemberEmail(group.id, memberId, value);
+  }
+}
+
+/**
+ * Copy the signed-in user's current email onto their own member slot.
+ *
+ * Members who joined before emails were stored carry none, and nobody else can
+ * supply it — only the person themselves knows what their account says. Writes
+ * exactly once per group, when the two differ; a member with no email on an
+ * account with none is already in step and writes nothing.
+ */
+export async function syncMyMemberEmail(group: Group, user: AuthUser | null): Promise<void> {
+  if (!isShared(group) || !user) return;
+  const me = group.members.find((m) => m.uid && m.uid === user.uid);
+  if (!me) return;
+  const current = user.email ?? null;
+  if ((me.email ?? null) === current) return;
+  await cloud.replaceCloudMember(group.id, me, { ...me, email: current });
 }
 
 /* ---------- transactions ---------- */

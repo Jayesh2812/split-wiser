@@ -169,7 +169,7 @@ describe("displayNames — disambiguation", () => {
     expect(Object.values(names).sort()).toEqual(["Jordan", "Sam", "Sam (2)"]);
   });
 
-  it("is independent of members[] order (renameCloudMember reorders the array)", () => {
+  it("is independent of members[] order (replaceCloudMember reorders the array)", () => {
     const g = sharedGroup();
     g.members = [
       { id: A, name: "Sam" },

@@ -32,13 +32,15 @@ Firebase is **optional**. With no config the app runs exactly as it always did �
 - **Settle Up**, two modes:
   - *Direct* (default): each person repays whoever paid for them, mutual debts netted — fully traceable
   - *Greedy* (**opt-in toggle**): minimises the number of payments to settle everyone
+- **Members** tab — everyone in the group with their email, and every membership action in one place: add, rename, set an email, merge duplicates, remove, invite, leave
 - **Export**: CSV and PDF (print-to-PDF report) covering transactions, balances and the settlement plan
 
 **Sharing & accounts**
 - Google sign-in; create shared groups and invite people with a code
 - Any member of a shared group can add expenses; changes sync live across devices
 - Name-only participants can coexist with signed-in members in a shared group
-- Leave a group, or (as owner) delete it for everyone
+- A member's email comes from their Google account; name-only people get one typed in by hand. Emails stay inside the group — they are never part of an export or a published settlement
+- Leave a group from the Members tab, or (as owner) delete it for everyone from Settings
 
 **Extras**
 - Edit / delete transactions, search, per-group totals and average per member
@@ -71,6 +73,45 @@ That's enough for solo groups. To enable Google sign-in and shared groups:
 No composite indexes are needed — the only query is a single-field `array-contains`, which Firestore indexes automatically.
 
 The `VITE_FIREBASE_*` keys are public by design; they identify the project rather than authorising access. Data is protected by `firestore.rules`.
+
+### Member emails (optional)
+
+Each member's email writes itself onto their own member slot the next time they open the app, because **a browser can only read the address of whoever is signed in on it** — the Firebase client SDK has no lookup of another user's email, and no Firestore rule can expose one. So a member who never opens the app again stays blank forever, and the Members tab offers to type theirs in by hand.
+
+[`api/member-emails.ts`](./api/member-emails.ts) closes that gap with the Admin SDK, which needs a server. It runs as a serverless function on Vercel's free tier — no Blaze plan, since Blaze is about where *code* runs, not about Admin SDK calls:
+
+1. **Firebase console → Project settings → Service accounts → Generate new private key** — a JSON file.
+2. In **Vercel → Project → Settings → Environment Variables**, add `FIREBASE_SERVICE_ACCOUNT` with the whole JSON file as its value. Treat it as a password: it bypasses `firestore.rules` entirely.
+3. Redeploy. A **Fetch emails** button appears on the Members tab whenever someone's address is missing.
+
+#### Testing it locally
+
+`npm run dev` does **not** serve `/api` — Vite has no serverless runtime, so the button correctly reports the endpoint as unavailable. To run the function on your machine:
+
+```bash
+npm run dev:api       # vercel dev — serves the app AND /api together on :3000
+```
+
+`vercel dev` reads `.env.local`, so that is where `FIREBASE_SERVICE_ACCOUNT` goes **for local runs only** (it is gitignored by `*.local`, and `vercel env pull` writes the project's variables into that same file). The deployed function never sees it — Vercel supplies it from the project's environment variables instead.
+
+To exercise it without the UI, grab your own ID token from the browser console on the running app and call the endpoint directly:
+
+```js
+// devtools console — Firebase persists the signed-in user here
+JSON.parse(Object.entries(localStorage).find(([k]) => k.startsWith("firebase:authUser"))[1])
+  .stsTokenManager.accessToken;
+```
+
+```bash
+curl -X POST http://localhost:3000/api/member-emails \
+  -H "Authorization: Bearer <that token>" \
+  -H "Content-Type: application/json" \
+  -d '{"groupId":"<group doc id from the Firestore console>"}'
+```
+
+Tokens last an hour; reload the app for a fresh one. Expect `{"ok":true,"filled":N}`, `501` when the service account is missing, `403` if you are not in that group, and `401` for a stale token.
+
+It answers for one group at a time, only to a caller whose ID token verifies *and* who is already in that group's `memberUids`, and it reads the uids from the group document rather than the request — so it cannot be used as a directory of arbitrary accounts. Deployments without the variable report themselves unconfigured and the app falls back to hand-typed addresses; the button and the rest of the tab work the same either way.
 
 ## Scripts
 
@@ -134,6 +175,8 @@ index.html                 App shell
 vite.config.ts             Vite + PWA + Vitest config
 firestore.rules            Security rules for shared groups
 .env.example               Firebase config template (optional)
+api/
+  member-emails.ts         Serverless email lookup (optional, Admin SDK)
 src/
   main.tsx                 React entry
   App.tsx                  Layout, tabs, modal orchestration
@@ -146,6 +189,7 @@ src/
     repo.ts                Facade routing each mutation by group kind
     firebase.ts            Lazy, optional Firebase bootstrap
     auth.ts                Google sign-in / sign-out
+    memberEmails.ts        Client half of the optional email lookup
     exporter.ts            CSV / PDF / JSON-backup export
     format.ts              Money, colours, dates
     toast.ts               Toast pub/sub

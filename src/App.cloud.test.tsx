@@ -16,7 +16,11 @@ const USER: AuthUser = {
 
 vi.mock("./lib/firebase", () => ({
   isCloudConfigured: () => true,
-  getAuthOrNull: () => null,
+  // Only memberEmails.ts reaches for the raw Firebase auth object, and only to
+  // mint an ID token for the lookup endpoint. Everything else goes via ./lib/auth.
+  getAuthOrNull: () => ({
+    currentUser: signedIn ? { getIdToken: async () => "id-token" } : null,
+  }),
   getDbOrNull: () => null,
 }));
 
@@ -84,7 +88,7 @@ vi.mock("./lib/cloud", () => ({
   deleteCloudTransaction: vi.fn(async () => {}),
   addCloudMember: vi.fn(async () => {}),
   removeCloudMember: vi.fn(async () => {}),
-  renameCloudMember: vi.fn(async () => {}),
+  replaceCloudMember: vi.fn(async () => {}),
   updateGroupMeta: vi.fn(async () => {}),
   deleteSharedGroup: vi.fn(async () => {}),
   leaveSharedGroup: vi.fn(async () => {}),
@@ -158,9 +162,12 @@ describe("App — cloud mode (shared groups)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByText(/Shared group/, { selector: "b" })).toBeTruthy();
-    expect(screen.getByText("XY7K2M")).toBeTruthy();
     // Cloud groups are not part of local JSON backups.
     expect(screen.queryByText("Backup JSON")).toBeNull();
+
+    // The code itself lives with the rest of membership, on the Members tab.
+    fireEvent.click(screen.getByRole("button", { name: /Manage members/ }));
+    expect(screen.getByText("XY7K2M")).toBeTruthy();
   });
 
   it("routes expense writes in a shared group to Firestore", async () => {
@@ -284,7 +291,7 @@ describe("App — publishing a final settlement", () => {
       currency: "₹",
       createdAt: 0,
       members: [
-        { id: "mem_u1", name: "Alex Doe", uid: "u1" },
+        { id: "mem_u1", name: "Alex Doe", uid: "u1", email: "alex@example.com" },
         { id: "mem_sam", name: "Sam", uid: null },
       ],
       transactions: [],
@@ -319,7 +326,7 @@ describe("App — publishing a final settlement", () => {
     await waitFor(() => expect(cloud.publishSettlement).toHaveBeenCalledOnce());
     const [, snapshot, fp] = vi.mocked(cloud.publishSettlement).mock.calls[0]!;
     const json = JSON.stringify(snapshot);
-    for (const secret of ["XY7K2M", "u1", "mem_u1", "mem_sam", "cloud1"]) {
+    for (const secret of ["XY7K2M", "u1", "mem_u1", "mem_sam", "cloud1", "alex@example.com"]) {
       expect(json, `snapshot must not contain ${secret}`).not.toContain(secret);
     }
     expect(fp).toMatch(/^[0-9a-f]{16}$/);
@@ -379,8 +386,10 @@ describe("App — publishing a final settlement", () => {
     expect(screen.getByText(/owner has published/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Publish settlement/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Stop sharing" })).toBeNull();
-    // Still the non-owner's destructive option, unchanged by this feature.
-    expect(screen.getByRole("button", { name: "Leave this group" })).toBeTruthy();
+    // Nor either destructive option: leaving moved to the Members tab, and
+    // deleting is the owner's alone.
+    expect(screen.queryByRole("button", { name: "Leave this group" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Delete this group/ })).toBeNull();
   });
 
   it("refuses to publish while offline", async () => {
@@ -391,6 +400,125 @@ describe("App — publishing a final settlement", () => {
     await waitFor(() => expect(screen.getByText(/You're offline/)).toBeTruthy());
     expect(cloud.publishSettlement).not.toHaveBeenCalled();
     onLine.mockRestore();
+  });
+});
+
+describe("App — the Members tab", () => {
+  const seed = (patch: Partial<Group> = {}) => {
+    cloudGroups.push({
+      id: "cloud1",
+      name: "Goa Trip",
+      currency: "₹",
+      createdAt: 0,
+      members: [
+        { id: "mem_u1", name: "Alex Doe", uid: "u1", email: "alex@example.com" },
+        { id: "mem_sam", name: "Sam", uid: null },
+      ],
+      transactions: [],
+      kind: "shared",
+      ownerUid: "u1",
+      memberUids: ["u1"],
+      inviteCode: "XY7K2M",
+      ...patch,
+    });
+  };
+
+  const openMembers = () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: "Members" }));
+  };
+
+  it("shows a signed-in member's email and the invite code", () => {
+    seed();
+    openMembers();
+    expect(screen.getByText("alex@example.com")).toBeTruthy();
+    expect(screen.getByText("XY7K2M")).toBeTruthy();
+    // A name-only participant has no address of their own to show.
+    const sam = screen
+      .getByText("Sam")
+      .closest(".member-row") as HTMLElement;
+    expect(within(sam).getByText("No email yet")).toBeTruthy();
+  });
+
+  it("backfills the signed-in user's own email when the group has none", async () => {
+    seed({ members: [{ id: "mem_u1", name: "Alex Doe", uid: "u1" }] });
+    openMembers();
+    await waitFor(() => expect(cloud.replaceCloudMember).toHaveBeenCalledOnce());
+    const [, , next] = vi.mocked(cloud.replaceCloudMember).mock.calls[0]!;
+    expect(next.email).toBe("alex@example.com");
+  });
+
+  it("writes nothing when the stored email already matches the account", async () => {
+    seed();
+    openMembers();
+    await waitFor(() => expect(screen.getByText("alex@example.com")).toBeTruthy());
+    expect(cloud.replaceCloudMember).not.toHaveBeenCalled();
+  });
+
+  it("offers a server lookup for members who never shared an address", async () => {
+    seed({
+      members: [
+        { id: "mem_u1", name: "Alex Doe", uid: "u1", email: "alex@example.com" },
+        { id: "mem_u2", name: "Priya", uid: "u2" },
+        { id: "mem_sam", name: "Sam", uid: null },
+      ],
+      memberUids: ["u1", "u2"],
+    });
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, filled: 1 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    openMembers();
+
+    // Sam is name-only and has no account to look up, so only Priya is counted.
+    expect(screen.getByText(/1 member hasn't shared an email yet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Fetch emails/ }));
+    await waitFor(() => expect(screen.getByText("Filled in 1 email")).toBeTruthy());
+    expect(fetchMock).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+
+  it("says so plainly when no lookup endpoint is deployed", async () => {
+    seed({
+      members: [
+        { id: "mem_u1", name: "Alex Doe", uid: "u1", email: "alex@example.com" },
+        { id: "mem_u2", name: "Priya", uid: "u2" },
+      ],
+      memberUids: ["u1", "u2"],
+    });
+    // A static host answers the missing route with the app shell.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("<!doctype html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html" },
+          }),
+      ),
+    );
+    openMembers();
+    fireEvent.click(screen.getByRole("button", { name: /Fetch emails/ }));
+    await waitFor(() => expect(screen.getByText(/isn't set up on this deployment/)).toBeTruthy());
+    vi.unstubAllGlobals();
+  });
+
+  it("hides the lookup once everyone's address is in", () => {
+    seed();
+    openMembers();
+    expect(screen.queryByRole("button", { name: /Fetch emails/ })).toBeNull();
+  });
+
+  it("is where a non-owner leaves the group", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    seed({ ownerUid: "u2", memberUids: ["u1", "u2"] });
+    openMembers();
+    fireEvent.click(screen.getByRole("button", { name: "Leave this group" }));
+    await waitFor(() => expect(cloud.leaveSharedGroup).toHaveBeenCalledOnce());
   });
 });
 

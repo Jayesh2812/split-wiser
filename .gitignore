@@ -8,3 +8,5 @@ dist-ssr
 npm-debug.log*
 *.tsbuildinfo
 dev-dist
+.vercel
+.env*
