@@ -136,9 +136,21 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     try {
       instance = adminApp(sdk);
     } catch (e) {
-      // Almost always a malformed service-account JSON in the env var.
+      // Almost always a malformed service-account JSON in the env var. The
+      // common shape of that is worth naming: a .env file keeps only the first
+      // line of an unquoted value, so a pretty-printed key becomes "{".
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT ?? "";
+      const truncated = raw.trim().length < 100;
       console.error("FIREBASE_SERVICE_ACCOUNT is not valid service-account JSON", e);
-      res.status(500).json({ ok: false, reason: "bad-credentials", detail: message(e) });
+      res.status(500).json({
+        ok: false,
+        reason: "bad-credentials",
+        detail: truncated
+          ? `FIREBASE_SERVICE_ACCOUNT holds only ${raw.trim().length} characters — the ` +
+            `service-account JSON must be on ONE line. Try: ` +
+            `echo "FIREBASE_SERVICE_ACCOUNT=$(jq -c . key.json)" >> .env.local`
+          : message(e),
+      });
       return;
     }
     if (!instance) {

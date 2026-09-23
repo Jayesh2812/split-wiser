@@ -8,7 +8,6 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "dev:api": "npx --yes vercel dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "rules:deploy": "firebase deploy --only firestore:rules",

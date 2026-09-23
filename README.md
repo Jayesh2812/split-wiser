@@ -88,13 +88,15 @@ Each member's email writes itself onto their own member slot the next time they 
 
 #### Testing it locally
 
-`npm run dev` does **not** serve `/api` — Vite has no serverless runtime, so the button correctly reports the endpoint as unavailable. To run the function on your machine:
+`npm run dev` serves it. A dev-only Vite plugin (`devApi` in [`vite.config.ts`](./vite.config.ts)) runs `api/*.ts` inside the dev server's own process, so a handler that throws prints a stack trace in your terminal instead of an opaque 500. `vercel dev` also works in principle, but with no framework preset on the project it insists on building first and reaches for yarn to do it.
+
+`FIREBASE_SERVICE_ACCOUNT` goes in `.env.local` **for local runs only** — gitignored by `*.local`, and not prefixed `VITE_`, so it is read by the dev server and never reaches the browser bundle. The deployed function never sees this file; Vercel supplies the value from the project's environment variables.
+
+It must be **one line**. A `.env` file keeps only the first line of an unquoted value, so pasting the pretty-printed key file leaves the variable holding `{`, and the endpoint answers `bad-credentials` saying so:
 
 ```bash
-npm run dev:api       # vercel dev — serves the app AND /api together on :3000
+echo "FIREBASE_SERVICE_ACCOUNT=$(jq -c . ~/Downloads/your-key.json)" >> .env.local
 ```
-
-`vercel dev` reads `.env.local`, so that is where `FIREBASE_SERVICE_ACCOUNT` goes **for local runs only** (it is gitignored by `*.local`, and `vercel env pull` writes the project's variables into that same file). The deployed function never sees it — Vercel supplies it from the project's environment variables instead.
 
 To exercise it without the UI, grab your own ID token from the browser console on the running app and call the endpoint directly:
 
@@ -105,7 +107,7 @@ JSON.parse(Object.entries(localStorage).find(([k]) => k.startsWith("firebase:aut
 ```
 
 ```bash
-curl -X POST http://localhost:3000/api/member-emails \
+curl -X POST http://localhost:5173/api/member-emails \
   -H "Authorization: Bearer <that token>" \
   -H "Content-Type: application/json" \
   -d '{"groupId":"<group doc id from the Firestore console>"}'
