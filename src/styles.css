@@ -837,14 +837,12 @@ body {
 .member-actions .chip-confirm { color: var(--text); }
 .member-actions .chip-cancel { color: var(--text-faint); }
 
-.member-edit { display: flex; gap: 8px; margin-top: 10px; }
-.member-edit input {
-  /* See .search: a flex <input> refuses to shrink below ~20 characters without this. */
-  flex: 1; min-width: 0;
-  background: var(--bg-input); border: 1px solid var(--line); color: var(--text);
-  border-radius: var(--radius-sm); padding: 10px 12px; font-size: 16px;
+/* Merge is off by default and the rows stay quiet; the toggle brings it out. */
+.merge-toggle {
+  margin-bottom: 10px; padding: 10px 12px;
+  background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
 }
-.member-edit .btn { flex: 0 0 auto; }
+.merge-toggle .settle-mode-label { min-width: 0; }
 
 .member-legend {
   display: block; color: var(--text-faint); font-size: 12px; line-height: 1.45; margin-top: 12px;

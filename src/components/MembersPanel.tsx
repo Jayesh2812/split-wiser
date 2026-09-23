@@ -15,9 +15,6 @@ interface Props {
   onLeft: () => void;
 }
 
-/** Which inline form a row is showing. One at a time, across the whole list. */
-type Editing = { id: string; field: "name" | "email" } | null;
-
 /**
  * Everyone in the group, and every operation on them: add, rename, contact
  * details, merge duplicates, remove, invite, and leaving yourself.
@@ -30,10 +27,15 @@ type Editing = { id: string; field: "name" | "email" } | null;
 export function MembersPanel({ group, user, onLeft }: Props) {
   const [newMember, setNewMember] = useState("");
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState<Editing>(null);
-  const [draft, setDraft] = useState("");
   /** Member awaiting delete confirmation — the row swaps to a confirm/cancel pair. */
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+  /**
+   * Merging is rare — it exists for the one case where somebody was added by
+   * name and later joined with Google — and a control on every row for it made
+   * the list read like a page of tools rather than a list of people. Behind a
+   * toggle, the rows stay quiet until you actually came here to merge.
+   */
+  const [merging, setMerging] = useState(false);
   /** Member being folded into someone else, awaiting a target. */
   const [mergeFrom, setMergeFrom] = useState<string | null>(null);
 
@@ -69,27 +71,6 @@ export function MembersPanel({ group, user, onLeft }: Props) {
     void run(() => repo.addMember(group, n));
   };
 
-  const startEdit = (m: Member, field: "name" | "email") => {
-    setPendingRemove(null);
-    setMergeFrom(null);
-    setEditing({ id: m.id, field });
-    setDraft(field === "name" ? m.name : (m.email ?? ""));
-  };
-
-  const saveEdit = (m: Member) => {
-    if (!editing) return;
-    const value = draft.trim();
-    const field = editing.field;
-    setEditing(null);
-    if (field === "name") {
-      if (!value || value === m.name) return;
-      void run(() => repo.renameMember(group, m.id, value));
-    } else {
-      if (value === (m.email ?? "")) return;
-      void run(() => repo.setMemberEmail(group, m.id, value));
-    }
-  };
-
   const remove = (memberId: string) =>
     run(async () => {
       setPendingRemove(null);
@@ -106,9 +87,17 @@ export function MembersPanel({ group, user, onLeft }: Props) {
   const merge = (fromId: string, intoId: string) =>
     run(async () => {
       setMergeFrom(null);
+      setMerging(false);
       await repo.mergeMembers(group, fromId, intoId);
       toast("Members merged");
     });
+
+  const toggleMerging = (on: boolean) => {
+    setMerging(on);
+    // Leaving a half-finished pick behind would re-open it the next time the
+    // toggle came on, pointing at a member who may since have been removed.
+    if (!on) setMergeFrom(null);
+  };
 
   const copyCode = async () => {
     if (!group.inviteCode) return;
@@ -244,6 +233,27 @@ export function MembersPanel({ group, user, onLeft }: Props) {
         </div>
       )}
 
+      {group.members.length > 1 && (
+        <div className="settle-mode-row merge-toggle">
+          <div className="settle-mode-label">
+            <strong>Merge duplicates</strong>
+            <small>
+              For when the same person is in the list twice — added by name, then joined with
+              Google.
+            </small>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={merging}
+              disabled={busy}
+              onChange={(e) => toggleMerging(e.target.checked)}
+            />
+            <span className="slider" />
+          </label>
+        </div>
+      )}
+
       {group.members.length === 0 && (
         <div className="hint">No members yet. Add the people sharing these expenses.</div>
       )}
@@ -291,72 +301,29 @@ export function MembersPanel({ group, user, onLeft }: Props) {
                   </div>
                 ) : (
                   <div className="member-actions">
-                    <button
-                      className="link-btn"
-                      onClick={() => startEdit(m, "name")}
-                      disabled={busy}
-                      aria-label={`Rename ${m.name}`}
-                    >
-                      Rename
-                    </button>
-                    {/* Offered for signed-in members too: until they next open
-                        the group nobody else's device can read their address, and
-                        typing it in is the only way to have it now. Theirs takes
-                        over the moment they do open it. */}
-                    <button
-                      className="link-btn"
-                      onClick={() => startEdit(m, "email")}
-                      disabled={busy}
-                      aria-label={`${m.email ? "Edit" : "Add"} email for ${m.name}`}
-                    >
-                      {m.email ? "Edit email" : "Add email"}
-                    </button>
-                    {group.members.length > 1 && (
+                    {merging ? (
                       <button
-                        className="icon-action"
-                        title={`Merge ${m.name} into another member`}
+                        className="link-btn"
                         aria-label={`Merge ${m.name}`}
                         onClick={() => setMergeFrom(m.id)}
                         disabled={busy}
                       >
-                        <Icon name="users" size={15} />
+                        Merge
+                      </button>
+                    ) : (
+                      <button
+                        className="icon-action"
+                        title={`Remove ${m.name}`}
+                        aria-label={`Remove ${m.name}`}
+                        onClick={() => setPendingRemove(m.id)}
+                        disabled={busy}
+                      >
+                        <Icon name="close" size={15} />
                       </button>
                     )}
-                    <button
-                      className="icon-action"
-                      title={`Remove ${m.name}`}
-                      aria-label={`Remove ${m.name}`}
-                      onClick={() => setPendingRemove(m.id)}
-                      disabled={busy}
-                    >
-                      <Icon name="close" size={15} />
-                    </button>
                   </div>
                 )}
               </div>
-
-              {editing?.id === m.id && (
-                <div className="member-edit">
-                  <input
-                    type={editing.field === "email" ? "email" : "text"}
-                    autoFocus
-                    value={draft}
-                    placeholder={editing.field === "email" ? "name@example.com" : "Name"}
-                    aria-label={editing.field === "email" ? "Email" : "Name"}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveEdit(m);
-                      if (e.key === "Escape") setEditing(null);
-                    }}
-                  />
-                  <button className="btn btn-primary" onClick={() => saveEdit(m)} disabled={busy}>
-                    Save
-                  </button>
-                  <button className="btn btn-ghost" onClick={() => setEditing(null)}>
-                    Cancel
-                  </button>
-                </div>
-              )}
 
               {mergeFrom === m.id && (
                 <div className="merge-panel">

@@ -144,22 +144,6 @@ export async function renameMember(group: Group, memberId: string, name: string)
   }
 }
 
-/** Set, or with an empty string clear, a member's email. */
-export async function setMemberEmail(
-  group: Group,
-  memberId: string,
-  email: string,
-): Promise<void> {
-  const value = email.trim();
-  if (isShared(group)) {
-    const prev = group.members.find((x) => x.id === memberId);
-    if (!prev) return;
-    await cloud.replaceCloudMember(group.id, prev, { ...prev, email: value || null });
-  } else {
-    store.setMemberEmail(group.id, memberId, value);
-  }
-}
-
 /**
  * Copy the signed-in user's current email onto their own member slot.
  *

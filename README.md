@@ -32,14 +32,14 @@ Firebase is **optional**. With no config the app runs exactly as it always did �
 - **Settle Up**, two modes:
   - *Direct* (default): each person repays whoever paid for them, mutual debts netted — fully traceable
   - *Greedy* (**opt-in toggle**): minimises the number of payments to settle everyone
-- **Members** tab — everyone in the group with their email, and every membership action in one place: add, rename, set an email, merge duplicates, remove, invite, leave
+- **Members** tab — everyone in the group with their email, and every membership action in one place: add, remove, merge duplicates (behind a toggle), invite, leave
 - **Export**: CSV and PDF (print-to-PDF report) covering transactions, balances and the settlement plan
 
 **Sharing & accounts**
 - Google sign-in; create shared groups and invite people with a code
 - Any member of a shared group can add expenses; changes sync live across devices
 - Name-only participants can coexist with signed-in members in a shared group
-- A member's email comes from their Google account; name-only people get one typed in by hand. Emails stay inside the group — they are never part of an export or a published settlement
+- A member's email comes from their Google account. Emails stay inside the group — they are never part of an export or a published settlement
 - Leave a group from the Members tab, or (as owner) delete it for everyone from Settings
 
 **Extras**

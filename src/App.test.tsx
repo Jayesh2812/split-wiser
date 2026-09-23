@@ -165,31 +165,13 @@ describe("App — offline mode (no Firebase)", () => {
     expect(screen.getByText(/1 members/)).toBeTruthy();
   });
 
-  it("renames a member and records an email for a name-only person", async () => {
+  it("keeps a member row down to one action", () => {
     render(<App />);
     createSoloGroup("Trip", "Alex\nSam");
     fireEvent.click(screen.getByRole("tab", { name: "Members" }));
-
-    const rowFor = (name: string) =>
-      [...document.querySelectorAll<HTMLElement>(".member-row")].find((c) =>
-        c.textContent?.includes(name),
-      );
-
-    fireEvent.click(within(rowFor("Sam")!).getByRole("button", { name: "Rename Sam" }));
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Samir" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(rowFor("Samir")).toBeTruthy());
-
-    fireEvent.click(
-      within(rowFor("Samir")!).getByRole("button", { name: "Add email for Samir" }),
-    );
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sam@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => expect(screen.getByText("sam@example.com")).toBeTruthy());
-    expect(getState().groups[0]!.members.find((m) => m.name === "Samir")!.email).toBe(
-      "sam@example.com",
-    );
+    expect(screen.queryByRole("button", { name: /Rename/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /email/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove Sam" })).toBeTruthy();
   });
 
   it("records a partial payment, then the remainder, from the Settle Up tab", async () => {
@@ -407,6 +389,10 @@ describe("App — offline mode (no Firebase)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Members" }));
     const rows = () => [...document.querySelectorAll<HTMLElement>(".member-row")];
     expect(rows().length).toBe(3);
+
+    // Merging is off by default — the rows carry no merge control until asked.
+    expect(screen.queryByRole("button", { name: /^Merge/ })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox"));
 
     // Fold the second Sam into the first.
     const dupes = rows().filter((c) => c.textContent?.includes("Sam"));

@@ -267,15 +267,6 @@ export function renameMember(groupId: string, memberId: string, name: string) {
   }));
 }
 
-/** Set (or, with an empty string, clear) how to reach a member. */
-export function setMemberEmail(groupId: string, memberId: string, email: string) {
-  const value = email.trim();
-  withGroup(groupId, (g) => ({
-    ...g,
-    members: g.members.map((m) => (m.id === memberId ? { ...m, email: value || null } : m)),
-  }));
-}
-
 /**
  * Fold `fromId` into `intoId`, rewriting every reference so no history is lost.
  *
