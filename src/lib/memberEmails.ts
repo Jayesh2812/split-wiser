@@ -46,8 +46,16 @@ export async function fetchMemberEmails(groupId: string): Promise<FetchEmailsRes
   if (res.status === 403) return { ok: false, reason: "not-a-member" };
 
   try {
-    const body = (await res.json()) as { ok?: boolean; filled?: number };
+    const body = (await res.json()) as {
+      ok?: boolean;
+      filled?: number;
+      reason?: string;
+      detail?: string;
+    };
     if (res.ok && body.ok) return { ok: true, filled: Number(body.filled) || 0 };
+    // The endpoint names what went wrong; the toast cannot say it usefully, so
+    // it goes to the console where it can actually be read.
+    console.error("member-emails:", body.reason ?? res.status, body.detail ?? "");
   } catch {
     /* falls through to the generic failure */
   }

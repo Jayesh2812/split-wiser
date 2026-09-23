@@ -16,14 +16,19 @@
  * nothing. Uids are read from the GROUP DOCUMENT, never from the request body,
  * so a member cannot use their own group as a lens onto arbitrary accounts.
  *
+ * NOTHING IS IMPORTED AT MODULE SCOPE. firebase-admin is 30MB of lazily-required
+ * submodules, and if the platform fails to package one of them a top-level
+ * import takes the whole invocation down with FUNCTION_INVOCATION_FAILED — a
+ * bare 500 with no body, which tells neither the caller nor the developer
+ * anything. Loading it inside the handler turns that into a JSON answer that
+ * names the problem. GET is a health check for exactly this reason.
+ *
  * Setup: put a Firebase service-account JSON in the FIREBASE_SERVICE_ACCOUNT
  * environment variable (Vercel > Project > Settings > Environment Variables).
  * Without it the endpoint reports itself unconfigured and the app falls back to
  * typing addresses in by hand.
  */
-import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import type { App } from "firebase-admin/app";
 
 interface Member {
   id: string;
@@ -43,34 +48,47 @@ interface Res {
   json: (body: unknown) => void;
 }
 
-/** Lazily built so an unconfigured deployment fails with a message, not a crash on import. */
-let app: App | null = null;
+/** The three firebase-admin entry points this endpoint uses. */
+async function loadAdmin() {
+  const [appMod, authMod, firestoreMod] = await Promise.all([
+    import("firebase-admin/app"),
+    import("firebase-admin/auth"),
+    import("firebase-admin/firestore"),
+  ]);
+  return {
+    cert: appMod.cert,
+    getApps: appMod.getApps,
+    initializeApp: appMod.initializeApp,
+    getAuth: authMod.getAuth,
+    getFirestore: firestoreMod.getFirestore,
+  };
+}
 
-function adminApp(): App | null {
-  if (app) return app;
+type Admin = Awaited<ReturnType<typeof loadAdmin>>;
+
+/** Reused across invocations on a warm instance. */
+let cached: App | null = null;
+
+function adminApp(sdk: Admin): App | null {
+  if (cached) return cached;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as {
-      project_id: string;
-      client_email: string;
-      private_key: string;
-    };
-    app =
-      getApps()[0] ??
-      initializeApp({
-        credential: cert({
-          projectId: parsed.project_id,
-          clientEmail: parsed.client_email,
-          // Vercel's env editor stores the key with literal \n sequences.
-          privateKey: parsed.private_key.replace(/\\n/g, "\n"),
-        }),
-      });
-    return app;
-  } catch (e) {
-    console.error("FIREBASE_SERVICE_ACCOUNT is not valid service-account JSON", e);
-    return null;
-  }
+  const parsed = JSON.parse(raw) as {
+    project_id: string;
+    client_email: string;
+    private_key: string;
+  };
+  cached =
+    sdk.getApps()[0] ??
+    sdk.initializeApp({
+      credential: sdk.cert({
+        projectId: parsed.project_id,
+        clientEmail: parsed.client_email,
+        // Vercel's env editor stores the key with literal \n sequences.
+        privateKey: parsed.private_key.replace(/\\n/g, "\n"),
+      }),
+    });
+  return cached;
 }
 
 const bearer = (req: Req): string | null => {
@@ -80,34 +98,71 @@ const bearer = (req: Req): string | null => {
   return value.slice("Bearer ".length).trim() || null;
 };
 
+const message = (e: unknown): string =>
+  (e instanceof Error ? e.message : String(e)).slice(0, 300);
+
 export default async function handler(req: Req, res: Res): Promise<void> {
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, reason: "method" });
-    return;
-  }
-
-  const instance = adminApp();
-  if (!instance) {
-    res.status(501).json({ ok: false, reason: "unconfigured" });
-    return;
-  }
-
-  const token = bearer(req);
-  const groupId =
-    typeof req.body === "object" && req.body !== null
-      ? String((req.body as { groupId?: unknown }).groupId ?? "")
-      : "";
-  if (!token || !groupId) {
-    res.status(400).json({ ok: false, reason: "bad-request" });
-    return;
-  }
-
+  // Everything is inside this try, including loading the SDK: an endpoint that
+  // dies without a body is the one failure nobody can debug from the outside.
   try {
+    let sdk: Admin;
+    try {
+      sdk = await loadAdmin();
+    } catch (e) {
+      console.error("firebase-admin failed to load", e);
+      res.status(500).json({ ok: false, reason: "sdk-load", detail: message(e) });
+      return;
+    }
+
+    const configured = !!process.env.FIREBASE_SERVICE_ACCOUNT;
+
+    // Health check: says whether the pieces are in place, and nothing else.
+    // Deliberately unauthenticated — it reveals only that an env var exists.
+    if (req.method === "GET") {
+      res.status(200).json({ ok: true, sdk: "loaded", configured });
+      return;
+    }
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, reason: "method" });
+      return;
+    }
+    if (!configured) {
+      res.status(501).json({ ok: false, reason: "unconfigured" });
+      return;
+    }
+
+    let instance: App | null;
+    try {
+      instance = adminApp(sdk);
+    } catch (e) {
+      // Almost always a malformed service-account JSON in the env var.
+      console.error("FIREBASE_SERVICE_ACCOUNT is not valid service-account JSON", e);
+      res.status(500).json({ ok: false, reason: "bad-credentials", detail: message(e) });
+      return;
+    }
+    if (!instance) {
+      res.status(501).json({ ok: false, reason: "unconfigured" });
+      return;
+    }
+
+    const token = bearer(req);
+    const body =
+      typeof req.body === "string" ? (JSON.parse(req.body || "{}") as unknown) : req.body;
+    const groupId =
+      typeof body === "object" && body !== null
+        ? String((body as { groupId?: unknown }).groupId ?? "")
+        : "";
+    if (!token || !groupId) {
+      res.status(400).json({ ok: false, reason: "bad-request" });
+      return;
+    }
+
     // checkRevoked: a signed-out or disabled account must not keep pulling
     // addresses on the strength of a token minted an hour ago.
-    const caller = await getAuth(instance).verifyIdToken(token, true);
+    const caller = await sdk.getAuth(instance).verifyIdToken(token, true);
 
-    const ref = getFirestore(instance).collection("groups").doc(groupId);
+    const ref = sdk.getFirestore(instance).collection("groups").doc(groupId);
     const snap = await ref.get();
     if (!snap.exists) {
       res.status(404).json({ ok: false, reason: "no-group" });
@@ -134,9 +189,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     // getUsers tolerates uids it cannot find (deleted accounts) by returning
     // them under notFound rather than throwing. 100 identifiers per call is the
     // Admin SDK's limit; a group that size is far beyond anything real.
-    const lookup = await getAuth(instance).getUsers(
-      wanted.slice(0, 100).map((uid) => ({ uid })),
-    );
+    const lookup = await sdk
+      .getAuth(instance)
+      .getUsers(wanted.slice(0, 100).map((uid) => ({ uid })));
     const byUid = new Map(lookup.users.map((u) => [u.uid, u.email ?? null]));
 
     const next = members.map((m) =>
@@ -156,6 +211,6 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
     console.error("member-emails failed", e);
-    res.status(500).json({ ok: false, reason: "failed" });
+    res.status(500).json({ ok: false, reason: "failed", detail: message(e) });
   }
 }
