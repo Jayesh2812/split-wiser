@@ -84,6 +84,8 @@ Each member's email writes itself onto their own member slot the next time they 
 2. In **Vercel → Project → Settings → Environment Variables**, add `FIREBASE_SERVICE_ACCOUNT` with the whole JSON file as its value. Treat it as a password: it bypasses `firestore.rules` entirely.
 3. Redeploy. A **Fetch emails** button appears on the Members tab whenever someone's address is missing.
 
+The function needs **Node 22** on the host, which `engines.node` in `package.json` pins. firebase-admin reaches `jose` v6 through `jwks-rsa`, and `jose` v6 is ESM-only while `jwks-rsa` `require()`s it — an arrangement that only works from Node 22.12, where `require()` of an ES module is supported. On Node 20 the function dies at import with `FUNCTION_INVOCATION_FAILED`, which is a bare 500 with no body; `GET /api/member-emails` reports that kind of failure as JSON instead.
+
 #### Testing it locally
 
 `npm run dev` does **not** serve `/api` — Vite has no serverless runtime, so the button correctly reports the endpoint as unavailable. To run the function on your machine:

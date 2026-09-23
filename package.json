@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "description": "Offline-first PWA expense splitter with greedy settlement and PDF/CSV export.",
   "scripts": {
     "dev": "vite",
