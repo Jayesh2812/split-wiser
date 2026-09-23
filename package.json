@@ -3,9 +3,6 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "engines": {
-    "node": "22.x"
-  },
   "description": "Offline-first PWA expense splitter with greedy settlement and PDF/CSV export.",
   "scripts": {
     "dev": "vite",
@@ -20,7 +17,7 @@
   },
   "dependencies": {
     "firebase": "^12.17.0",
-    "firebase-admin": "^14.4.0",
+    "firebase-admin": "^13.10.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

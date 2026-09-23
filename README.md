@@ -84,7 +84,7 @@ Each member's email writes itself onto their own member slot the next time they 
 2. In **Vercel → Project → Settings → Environment Variables**, add `FIREBASE_SERVICE_ACCOUNT` with the whole JSON file as its value. Treat it as a password: it bypasses `firestore.rules` entirely.
 3. Redeploy. A **Fetch emails** button appears on the Members tab whenever someone's address is missing.
 
-The function needs **Node 22** on the host, which `engines.node` in `package.json` pins. firebase-admin reaches `jose` v6 through `jwks-rsa`, and `jose` v6 is ESM-only while `jwks-rsa` `require()`s it — an arrangement that only works from Node 22.12, where `require()` of an ES module is supported. On Node 20 the function dies at import with `FUNCTION_INVOCATION_FAILED`, which is a bare 500 with no body; `GET /api/member-emails` reports that kind of failure as JSON instead.
+**`firebase-admin` is held at v13 deliberately.** v14 pulls `jwks-rsa@4`, which does `require('jose')` while `jose@6` is ESM-only — a combination that loads under Node's own `require(esm)` support but not inside Vercel's function loader, where it throws `ERR_REQUIRE_ESM` at import and the invocation dies as `FUNCTION_INVOCATION_FAILED`: a bare 500 with no body, on every request including ones that should have been rejected earlier. v13 resolves to `jwks-rsa@3` and `jose@4`, which are CommonJS and load anywhere. Upgrading to v14 will reintroduce this, so verify `GET /api/member-emails` returns `{"ok":true,"sdk":"loaded"}` after any bump.
 
 #### Testing it locally
 
