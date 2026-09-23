@@ -153,6 +153,16 @@ body {
 }
 
 .tx-filter { margin-bottom: 12px; animation: fade .18s ease; }
+/* Title left, close right — the same shape as .modal-header and .drawer-header. */
+.filter-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+.filter-head .filter-title { font-size: 14px; font-weight: 700; }
+/* Pulled into the card's padding so the glyph, not its tap target, lines up
+   with the edge — the tap target itself stays a full 38px. */
+.filter-head .icon-btn { flex: none; margin: -6px -8px -6px 0; color: var(--text-faint); }
+.filter-head .icon-btn:hover { color: var(--text); }
 .tx-filter .filter-group + .filter-group { margin-top: 14px; }
 .filter-label {
   color: var(--text-faint); font-size: 11px; font-weight: 700;

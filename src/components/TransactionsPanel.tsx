@@ -129,6 +129,21 @@ export function TransactionsPanel({ group, onAdd, onEdit, onNeedMembers }: Props
 
       {filterOpen && (
         <div className="tx-filter card">
+          {/* Closing only hides the panel; anything picked stays applied, which is
+              what the count on the toolbar button is there to report. Dropping the
+              filters is the separate "Clear filters" action below. */}
+          <div className="filter-head">
+            <span className="filter-title">Filters</span>
+            <button
+              className="icon-btn"
+              aria-label="Close filters"
+              title="Close"
+              onClick={() => setFilterOpen(false)}
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+
           {catOptions.length === 0 && payerOptions.length === 0 && (
             <p className="filter-none">Nothing to filter yet — add a transaction first.</p>
           )}

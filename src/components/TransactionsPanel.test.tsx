@@ -129,6 +129,33 @@ describe("TransactionsPanel filters", () => {
     expect(rows()).toHaveLength(4);
   });
 
+  it("closes the panel from its own X", () => {
+    show();
+    openFilters();
+    fireEvent.click(screen.getByRole("button", { name: "Close filters" }));
+    expect(screen.queryByText("Category")).toBeNull();
+  });
+
+  it("keeps the filters applied after the panel is closed", () => {
+    show();
+    openFilters();
+    fireEvent.click(chipIn("Category", "🍔"));
+    fireEvent.click(screen.getByRole("button", { name: "Close filters" }));
+    // Closing hides the controls; it is not a way to undo the filtering.
+    expect(screen.queryByText("Category")).toBeNull();
+    expect(rows()).toEqual(["Dinner", "Lunch"]);
+    expect(document.querySelector(".filter-count")!.textContent).toBe("1");
+  });
+
+  it("offers the X even when there is nothing to filter", () => {
+    const g = group();
+    g.transactions = [];
+    show(g);
+    openFilters();
+    fireEvent.click(screen.getByRole("button", { name: "Close filters" }));
+    expect(screen.queryByText(/Nothing to filter yet/)).toBeNull();
+  });
+
   it("says so when the filters leave nothing", () => {
     show();
     openFilters();
